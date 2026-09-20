@@ -7,18 +7,27 @@ venv/
 env/
 .pytest_cache/
 
-# Node
+# Node & Build outputs
 node_modules/
 dist/
+.vite/
+frontend/.vite/
 
 # Environment & local data
 .env
+.env.*
+!.env.example
 *.db
+*.sqlite
 uploads/
 .llm_cache/
 
+# Logs & Temporary files
+*.log
 
 # OS & Editor
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+
