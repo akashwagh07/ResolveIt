@@ -170,9 +170,9 @@ class SubmitResolutionCommand(BaseModel):
 class RecordVerificationCommand(BaseModel):
     command: Literal["RECORD_VERIFICATION"] = "RECORD_VERIFICATION"
     complaint_id: str
-    evidence_relevant: bool
-    location_consistent: bool
-    visual_change_detected: bool
+    evidence_relevant: Optional[bool] = None
+    location_consistent: Optional[bool] = None
+    visual_change_detected: Optional[bool] = None
     confidence: float = Field(ge=0.0, le=1.0)
     recommendation: Literal["ADMIN_REVIEW", "REJECT", "NEEDS_MORE_EVIDENCE"]
     reasoning: str
