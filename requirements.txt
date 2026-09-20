@@ -7,3 +7,5 @@ python-dotenv
 python-multipart
 pytest
 httpx
+google-genai
+

@@ -1,3 +1,4 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -8,6 +9,15 @@ from backend.app.clock import reset as clock_reset
 from backend.app.database import Base, SessionLocal, get_db
 from backend.app.main import app
 from backend.app.seed import seed_database
+
+
+def pytest_collection_modifyitems(config, items):
+    if os.getenv("RUN_LIVE_LLM") != "1":
+        skip_live = pytest.mark.skip(reason="Live LLM tests skipped unless RUN_LIVE_LLM=1 is set")
+        for item in items:
+            if "live" in item.keywords:
+                item.add_marker(skip_live)
+
 
 
 @pytest.fixture(scope="session")
