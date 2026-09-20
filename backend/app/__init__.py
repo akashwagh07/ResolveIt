@@ -1,0 +1,1 @@
+"""ResolveIt application package."""
