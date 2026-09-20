@@ -38,8 +38,27 @@ export default function CitizenDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Prominent CTA Hero Banner */}
+      <div className="bg-gradient-to-r from-brand-600 to-indigo-700 rounded-2xl p-6 mb-8 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight">
+            See a civic problem in your neighborhood?
+          </h2>
+          <p className="text-xs text-brand-100 max-w-xl">
+            Report potholes, broken streetlights, water leaks, or overflowing garbage. Our multimodal AI will classify and route it to the right department.
+          </p>
+        </div>
+        <Link
+          to="/citizen/report"
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-brand-700 hover:bg-brand-50 text-xs font-bold shadow-sm transition-all shrink-0"
+        >
+          <PlusCircle className="w-4 h-4 text-brand-600" />
+          Report an Issue
+        </Link>
+      </div>
+
       {/* Header section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">My Complaints</h1>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
@@ -52,7 +71,7 @@ export default function CitizenDashboard() {
           <button
             type="button"
             onClick={fetchCitizenComplaints}
-            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-2xs transition-colors"
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-2xs transition-colors cursor-pointer"
             title="Refresh list"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

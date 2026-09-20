@@ -67,6 +67,9 @@ npm run dev
 ```
 The frontend will start on [http://localhost:5173](http://localhost:5173) with automatic proxying to the backend API.
 
+> **Browser Permissions Note**: In-browser Geolocation (`navigator.geolocation`) and Microphone access (`navigator.mediaDevices.getUserMedia`) are restricted by modern browser security policies and require a secure origin (`localhost` or `https://`).
+
+
 
 ### API Routes
 

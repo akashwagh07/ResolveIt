@@ -76,7 +76,7 @@ MEDIA_WHITELIST: Dict[str, tuple[Literal["IMAGE", "AUDIO", "VIDEO"], str, int]] 
 }
 
 
-def load_media(path: str | Path) -> MediaPart:
+def load_media(path: str | Path, expected_kind: Optional[str] = None) -> MediaPart:
     """Load and validate media file according to type and size limits."""
     p = Path(path)
     if not p.exists() or not p.is_file():
@@ -88,6 +88,17 @@ def load_media(path: str | Path) -> MediaPart:
         raise MediaError(f"Unsupported media extension '{ext}'. Supported extensions: {supported}")
 
     kind, mime_type, max_bytes = MEDIA_WHITELIST[ext]
+
+    # Handle ambiguous extensions such as .webm which can be AUDIO or VIDEO
+    if ext == ".webm" and expected_kind == "AUDIO":
+        kind = "AUDIO"
+        mime_type = "audio/webm"
+
+    if expected_kind and kind != expected_kind:
+        raise MediaError(
+            f"File '{p.name}' is of type {kind}, but was uploaded to the {expected_kind.lower()} field"
+        )
+
     size = p.stat().st_size
     if size > max_bytes:
         max_mb = max_bytes // (1024 * 1024)

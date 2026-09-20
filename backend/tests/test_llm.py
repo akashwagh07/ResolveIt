@@ -403,3 +403,33 @@ def test_total_media_limit_enforced():
 
     with pytest.raises(MediaError, match="exceeds maximum inline limit of 18 MB"):
         generate_json(prompt="test", schema=DummySchema, media=media_parts, use_cache=False)
+
+
+def test_load_media_expected_kind_and_webm_handling(tmp_path):
+    # 1. .webm audio uploaded to AUDIO field -> kind AUDIO, mime audio/webm
+    audio_webm = tmp_path / "voice.webm"
+    audio_webm.write_bytes(b"webm-audio-bytes")
+    part_audio = load_media(audio_webm, expected_kind="AUDIO")
+    assert part_audio.kind == "AUDIO"
+    assert part_audio.mime_type == "audio/webm"
+
+    # 2. .webm video uploaded to VIDEO field -> kind VIDEO, mime video/webm
+    video_webm = tmp_path / "clip.webm"
+    video_webm.write_bytes(b"webm-video-bytes")
+    part_video = load_media(video_webm, expected_kind="VIDEO")
+    assert part_video.kind == "VIDEO"
+    assert part_video.mime_type == "video/webm"
+
+    # 3. Mismatch: .jpg image uploaded to AUDIO field -> raises MediaError
+    img_file = tmp_path / "test.jpg"
+    img_file.write_bytes(b"\xff\xd8\xff" + b"image-data")
+    with pytest.raises(MediaError, match="is of type IMAGE, but was uploaded to the audio field"):
+        load_media(img_file, expected_kind="AUDIO")
+
+    # 4. Matching expected_kind for normal audio (.mp3, .wav)
+    wav_file = tmp_path / "note.wav"
+    wav_file.write_bytes(b"RIFF....WAVEfmt ")
+    part_wav = load_media(wav_file, expected_kind="AUDIO")
+    assert part_wav.kind == "AUDIO"
+    assert part_wav.mime_type == "audio/wav"
+

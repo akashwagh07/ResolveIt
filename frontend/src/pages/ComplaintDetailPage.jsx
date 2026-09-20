@@ -14,6 +14,9 @@ import {
   Image as ImageIcon,
   History,
   AlertTriangle,
+  Maximize2,
+  X,
+  Volume2,
 } from 'lucide-react';
 import { getComplaint, getDepartments } from '../lib/api';
 import StatusBadge from '../components/StatusBadge';
@@ -31,6 +34,8 @@ export default function ComplaintDetailPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [expandedImage, setExpandedImage] = useState(null);
+  const [mediaErrors, setMediaErrors] = useState({});
 
   const isAdminView = location.pathname.startsWith('/admin');
   const backLink = isAdminView ? '/admin' : '/citizen';
@@ -301,26 +306,84 @@ export default function ComplaintDetailPage() {
 
             {complaint.evidence && complaint.evidence.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {complaint.evidence.map((ev) => (
-                  <div key={ev.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-start gap-3">
-                    <div className="w-10 h-10 rounded bg-brand-100 flex items-center justify-center text-brand-700 shrink-0">
-                      <ImageIcon className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0 flex-1 text-xs">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="font-semibold text-slate-800 uppercase text-[10px] tracking-wider px-1.5 py-0.2 rounded bg-slate-200">
+                {complaint.evidence.map((ev) => {
+                  const evType = (ev.type || '').toUpperCase();
+                  const hasError = mediaErrors[ev.id];
+
+                  return (
+                    <div
+                      key={ev.id}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between gap-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-slate-800 uppercase text-[10px] tracking-wider px-2 py-0.5 rounded bg-slate-200">
                           {ev.role}
                         </span>
-                        <span className="text-slate-400 text-[10px]">{ev.type}</span>
+                        <span className="text-slate-500 text-[11px] font-medium">{ev.type}</span>
                       </div>
-                      <p className="font-mono text-[11px] text-slate-600 truncate">{ev.file_path}</p>
-                      {ev.phash && (
-                        <p className="font-mono text-[10px] text-slate-400 mt-0.5">phash: {ev.phash}</p>
+
+                      {/* Render Media View */}
+                      {hasError ? (
+                        <div className="p-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>Unable to load {evType.toLowerCase()} file</span>
+                        </div>
+                      ) : evType === 'IMAGE' ? (
+                        <div className="relative group overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                          <img
+                            src={ev.url || `/api/evidence/${ev.id}/file`}
+                            alt={ev.file_path}
+                            className="w-full h-40 object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
+                            onClick={() => setExpandedImage(ev.url || `/api/evidence/${ev.id}/file`)}
+                            onError={() => setMediaErrors((prev) => ({ ...prev, [ev.id]: true }))}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setExpandedImage(ev.url || `/api/evidence/${ev.id}/file`)}
+                            className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" />
+                            Expand
+                          </button>
+                        </div>
+                      ) : evType === 'AUDIO' ? (
+                        <div className="p-2 rounded-lg bg-white border border-slate-200">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-1.5">
+                            <Volume2 className="w-4 h-4 text-brand-600" />
+                            <span className="font-medium">Audio Recording</span>
+                          </div>
+                          <audio
+                            controls
+                            src={ev.url || `/api/evidence/${ev.id}/file`}
+                            className="w-full h-10"
+                            onError={() => setMediaErrors((prev) => ({ ...prev, [ev.id]: true }))}
+                          />
+                        </div>
+                      ) : evType === 'VIDEO' ? (
+                        <div className="rounded-lg overflow-hidden border border-slate-200 bg-black">
+                          <video
+                            controls
+                            src={ev.url || `/api/evidence/${ev.id}/file`}
+                            className="w-full max-h-48"
+                            onError={() => setMediaErrors((prev) => ({ ...prev, [ev.id]: true }))}
+                          />
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-white rounded border border-slate-200 text-xs">
+                          <p className="font-mono text-slate-700 truncate">{ev.file_path}</p>
+                        </div>
                       )}
-                      <p className="text-[10px] text-slate-400 mt-1">Uploaded by {ev.uploaded_by}</p>
+
+                      <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                        <p className="font-mono truncate">{ev.file_path}</p>
+                        {ev.phash && (
+                          <p className="font-mono text-[10px] text-slate-400 mt-0.5">phash: {ev.phash}</p>
+                        )}
+                        <p className="text-[10px] text-slate-400 mt-0.5">Uploaded by {ev.uploaded_by}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic">No media attachments recorded for this complaint.</p>
@@ -383,6 +446,33 @@ export default function ComplaintDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Expanded Image Modal */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border border-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setExpandedImage(null)}
+              className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10 cursor-pointer"
+              title="Close preview"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={expandedImage}
+              alt="Enlarged evidence preview"
+              className="max-w-full max-h-[85vh] object-contain mx-auto"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

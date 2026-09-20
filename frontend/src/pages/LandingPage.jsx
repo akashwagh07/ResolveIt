@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, User, Briefcase, ShieldAlert, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Shield, User, Briefcase, ShieldAlert, ArrowRight, Sparkles, CheckCircle2, PlusCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
 const PRESET_CITIZENS = [
@@ -154,6 +154,20 @@ export default function LandingPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSession('CITIZEN', citizenName, citizenContact);
+                    navigate('/citizen/report');
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 hover:underline cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Or jump directly to Report an Issue &rarr;
+                </button>
               </div>
             </div>
           )}

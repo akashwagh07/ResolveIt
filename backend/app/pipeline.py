@@ -101,7 +101,7 @@ def process_submission(
                 saved_paths.append(str(dest_path.resolve()))
 
                 # Validate with load_media immediately
-                part = load_media(dest_path)
+                part = load_media(dest_path, expected_kind=expected_kind)
                 evidence_items.append({
                     "type": part.kind,
                     "file_path": str(dest_path.resolve()),
