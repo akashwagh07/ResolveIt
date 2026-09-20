@@ -2,22 +2,33 @@
 
 AI-powered closed-loop civic issue resolution platform.
 
-## 1. What Is Built (Verified in Code)
+## 1. Feature Implementation Status
 
-- **Core & Config**: `backend/app/config.py` (Pydantic v2 settings, environment overrides), `database.py` (SQLite WAL engine, session management), `clock.py` (virtual clock for SLA and time travel).
-- **Data Layer**: `backend/app/models.py` (Department, User, Cluster, Complaint, Evidence, Resolution, Escalation, ComplaintEvent, CommandRejection).
-- **State Machine**: `backend/app/state_machine.py` (strict transitions across 11 main states and 6 auxiliary states, terminal state guards).
-- **Audit Logging**: `backend/app/events.py` (immutable append-only `complaint_events` log).
-- **Command Gate & Executor**: `backend/app/commands.py` & `executor.py` (13 command schemas, role/state/rule validations, rejection tracking via `command_rejections`).
-- **LLM Wrapper**: `backend/app/llm.py` (multimodal Gemini calls via official Google GenAI SDK, fallback chain, exponential backoff retries, SHA-256 disk cache, HTTP 429 RESOURCE_EXHAUSTED quota handling, per-call timeout budget `LLM_TOTAL_TIMEOUT_SECONDS`, and 120s monotonic circuit breaker cooldown).
-- **Agent 1 & Agent 2**: `backend/app/agents/agent1.py` (multimodal intake, prompt isolation, ontology validation) & `agent2.py` (zero-LLM deterministic decision engine with `ai_unavailable` cooldown fallback).
-- **Deterministic Rule Engine**: `backend/app/engines/` (`severity.py` 0-10 scoring, `priority.py` baseline + sensitive bump, `department.py` routing, `sla.py` deadlines).
-- **Demo Identity & Auth Layer**: `backend/app/auth.py` & `routers/auth.py` (headers `X-Demo-Role`, `X-Demo-User-Id`, `X-Demo-Passcode`, `X-Citizen-Contact`, `GET /api/auth/whoami`, `GET /api/users`).
-- **Action Layer & Endpoints**: `backend/app/actions.py` & `routers/actions.py` (11 actions: accept, confirm_classification, reject_out_of_scope, assign, start_work, approve_resolution, reject_resolution, confirm_resolution, dispute_resolution, resume_work, de_escalate; `GET /api/complaints/{id}/actions`, `POST /api/complaints/{id}/actions/{action}`).
-- **Resolution Upload & Verification Hook**: `backend/app/routers/actions.py` & `verification.py` (`POST /api/complaints/{id}/resolution` with 1-4 images, random filenames, `StubVerifier` protocol, automated transition to `ADMIN_VERIFICATION`).
-- **Intake Pipeline & API**: `backend/app/pipeline.py` & `routers/complaints.py` (`POST /api/complaints`, `GET /api/complaints` with officer/review filters, extended detail endpoint, `GET /api/evidence/{id}/file`, `GET /api/health` with LLM circuit breaker status).
-- **Testing & Scripts**: `backend/tests/` (107 offline unit/integration tests with temp DB isolation and quota mocks), `backend/scripts/reset_demo_db.py`, `backend/scripts/demo_flow.py` (end-to-end HTTP lifecycle flow with 120s timeout, custom flags, dynamic department officer assignment, and step elapsed timing).
-- **Frontend Application**: React 18, Vite, Tailwind CSS, React Router v6 (Landing role & passcode picker with `whoami` validation, Role-guarded routing `/officer`, `/admin`, `/citizen`; Officer work queue with SLA overdue badges; ActionPanel with accessible modals; ResolutionForm with before photo reference; BeforeAfter visual comparison; VerificationCard with human decision disclaimer and 3-step tracker; Admin queues with "Needs review" and "Waiting on admin" chips; Leaflet Map, Report form with PCM voice recorder).
+### Built (Verified in Code)
+- **Deterministic Rule Engine**: Pure Python implementations for severity scoring (0–10 in `severity.py`), priority calculation with vulnerable zone bumps (`priority.py`), department routing across 10 municipal departments (`department.py`), and SLA deadline calculation (`sla.py`).
+- **Command Pattern Gate & Executor**: 13 command schemas (`commands.py`), strict caller permission checks across 7 actors (`Actor`), state validity checks, and atomic execution with rejection logging (`executor.py`).
+- **State Machine**: 11 primary states and 6 auxiliary states in `state_machine.py`, strict transition graph, terminal state protections, and immutable audit event logging (`events.py`).
+- **LLM Wrapper & Quota Resilience**: Official Google GenAI SDK integration (`llm.py`), fallback chain (`gemini-3.6-flash` -> `gemini-3.5-flash` -> `gemini-3.7-flash`), per-call timeout budget (`LLM_TOTAL_TIMEOUT_SECONDS=25`), SHA-256 disk cache, HTTP 429 quota classification, and 120s circuit breaker cooldown.
+- **Agent 1 & Agent 2**: Multimodal intake with prompt isolation and taxonomy validation (`agent1.py`); zero-LLM deterministic decision orchestration with graceful `ai_unavailable` fallback (`agent2.py`).
+- **Demo Identity & Auth Layer**: Header-based persona switching (`X-Demo-Role`, `X-Demo-User-Id`, `X-Demo-Passcode`, `X-Citizen-Contact`), constant-time passcode validation (`auth.py`), `GET /api/auth/whoami`, and `GET /api/users`.
+- **Action API & Lifecycle Workflow**: 11 permitted actions (`actions.py`), state transition execution (`POST /api/complaints/{id}/actions/{action}`), available action listing (`GET /api/complaints/{id}/actions`).
+- **Resolution Evidence & Verification Hook**: Multi-image after-photo upload (`POST /api/complaints/{id}/resolution`), automated transition to `RESOLUTION_SUBMITTED` -> `AI_VERIFICATION` -> `ADMIN_VERIFICATION`.
+- **Frontend Web Application**: React 18, Vite, Tailwind CSS, React Router v6. Persona selector on landing page with passcode validation, role-guarded routes (`/officer`, `/admin`, `/citizen`), citizen report intake with audio recording and GPS, interactive Leaflet map, officer task queue with SLA indicators, ActionPanel with accessible modals, side-by-side BeforeAfter comparison, VerificationCard with human-in-the-loop controls.
+- **Automated Tests**: 107 unit and integration tests passing offline (`pytest`), isolated temporary SQLite databases, mock LLM backends.
+- **Demo & Seed Scripts**: `reset_demo_db.py` for atomic drop/reseed of Kolhapur baseline data, and `demo_flow.py` for end-to-end HTTP lifecycle simulation.
+
+### Partial (Partially Implemented)
+- **Resolution Verification**: Protocol hook (`run_verification_hook`) and `StubVerifier` are built and active (`VERIFIER=stub`), recording `recommendation="ADMIN_REVIEW"` with `confidence=0.0` for human administrative sign-off. Automated multimodal AI vision verification comparing before/after photos is designed as an extension point but not yet wired to a live vision model.
+- **Video Intake**: Accepts, validates MIME types, and stores video evidence files (`.mp4`, `.mov`, `.webm`) up to 30 MB; visual keyframe extraction for LLM analysis is not yet implemented.
+- **Passcode Configuration**: Demo passcode configurable via `OFFICER_PASSCODE` in backend; frontend supports optional hint via `VITE_DEMO_PASSCODE_HINT`. Uses demo header authentication rather than JWT/OAuth2 tokens.
+
+### Not Built (Roadmap)
+- **Background Scheduler Daemon**: SLA escalation transitions and auto-closure exist in the state machine and commands, but an automated background daemon (cron/worker) polling overdue complaints in real time is not running.
+- **Automated Duplicate & Root-Cause Clustering**: `LINK_CLUSTER` command schema and `Cluster` database model exist, but automated spatial-temporal duplicate grouping algorithms are not wired into the active pipeline.
+- **Live Weather Integration**: Open-Meteo weather API integration described in specifications is not wired into the active intake pipeline.
+- **Evaluation Benchmark Suite**: Benchmark evaluation dataset (`eval/results.md`) is planned for future model fine-tuning and accuracy evaluation.
+
+---
 
 ## 2. How to Run
 
@@ -28,42 +39,46 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env
 uvicorn backend.app.main:app --reload --port 8000
-pytest
 ```
+*(On macOS/Linux: `source .venv/bin/activate` and `cp .env.example .env`)*
 
 ### Frontend
 ```powershell
 cd frontend
+copy .env.example .env
 npm install
 npm run dev
 ```
 
-### Demo Script & Reset
+### Run Offline Test Suite
+```powershell
+pytest
+```
+
+### Reset Demo Database
 ```powershell
 python -m backend.scripts.reset_demo_db --yes
+```
+
+### Run Lifecycle Demo Script
+```powershell
 python -m backend.scripts.demo_flow --base http://127.0.0.1:8000
 ```
 
-## 3. Key Design Decisions
+---
 
-- **Command Pattern Architecture**: Agents and actions only propose commands (`Command`); the backend command gate validates schema, state, and permissions before applying mutations.
-- **Deterministic Critical Path**: Severity score, priority tier, department routing, SLA deadlines, and state transitions are purely deterministic Python code—never LLM opinion.
-- **Confidence Gating**: Confidence >= 0.85 auto-progresses; 0.60 to 0.84 proceeds with `needs_review=True`; < 0.60 routes to `HUMAN_REVIEW`.
-- **Security & Integrity**: Untrusted citizen inputs wrapped in delimiters; random filenames generated on upload; directory traversal blocked on evidence retrieval; passcodes sanitized and verified via constant-time comparison.
-- **Offline Reliability**: Deterministic on-disk LLM response caching and virtual clock enable full offline development, repeatable testing, and simulated SLA fast-forwarding.
+## 3. Key Design Principles
+
+1. **Agents Propose, Backend Executes**: AI agents never mutate the database directly. All mutations occur via strict Pydantic command schemas validated by the command gate.
+2. **Deterministic Rules for Critical Operations**: Severity scoring, priority tiers, department routing, and SLA deadlines are calculated by deterministic Python code—never LLM opinion.
+3. **AI Never Closes a Complaint**: Final resolution closure requires explicit citizen confirmation or administrative verification.
+4. **Confidence Gating**: High-confidence classifications (>= 0.85) auto-progress; medium-confidence (0.60–0.84) progress with a review flag; low-confidence (< 0.60) routes to human intake review.
+5. **Immutable Audit Trail**: Every status transition, priority change, assignment, and action appends an immutable record to `complaint_events`.
+
+---
 
 ## 4. Known Limitations
 
-- Demo-grade identity via request headers; full JWT session management not yet implemented.
-- No database migrations; schema changes require database reset.
-- Open-Meteo weather integration not yet wired into the active pipeline.
-- Video processing validates format and metadata but does not yet extract visual keyframes.
-
-## 5. Next Steps (Not Built Yet)
-
-1. Agent 3 verification: multimodal before/after visual comparison with Gemini vision.
-2. Deterministic scheduler with demo virtual clock fast-forward and SLA auto-escalation.
-3. Dynamic priority engine (rain forecast, GIS proximity to schools/hospitals, duplicate count).
-4. Duplicate and cross-type root-cause clustering engine.
-5. Escalation dossier generator.
-6. Benchmark evaluation set and production deployment.
+- **Demo Authentication**: Uses custom request headers (`X-Demo-*`) for judging convenience; production deployment requires standard OAuth2 / JWT.
+- **Schema Migrations**: Relies on SQLite metadata creation and reseed scripts rather than Alembic migrations.
+- **Storage**: Uploaded media and SQLite database reside on local disk; cloud object storage (S3/GCS) is required for horizontally scaled deployments.
