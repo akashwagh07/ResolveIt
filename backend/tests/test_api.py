@@ -76,3 +76,50 @@ def test_list_complaints_with_filters(client):
     for c in res_data:
         assert c["citizen_contact"] == "+91 9822012345"
 
+
+def test_list_complaints_empty_and_whitespace_filter_treated_as_absent(client):
+    # Baseline all complaints
+    all_resp = client.get("/api/complaints")
+    assert all_resp.status_code == 200
+    all_complaints = all_resp.json()
+    assert len(all_complaints) >= 6
+
+    # Empty string query parameters: citizen_contact=&status=
+    empty_resp = client.get("/api/complaints?citizen_contact=&status=")
+    assert empty_resp.status_code == 200
+    assert len(empty_resp.json()) == len(all_complaints)
+
+    # Whitespace-only query parameters: citizen_contact=%20&status=%20&category=%20&department_id=
+    ws_resp = client.get("/api/complaints?citizen_contact=%20&status=%20&category=%20&department_id=")
+    assert ws_resp.status_code == 200
+    assert len(ws_resp.json()) == len(all_complaints)
+
+
+def test_list_complaints_pinned_response_shape(client):
+    response = client.get("/api/complaints")
+    assert response.status_code == 200
+    complaints = response.json()
+    assert isinstance(complaints, list)
+    assert len(complaints) > 0
+
+    pinned_fields = [
+        ("id", str),
+        ("status", str),
+        ("category", str),
+        ("issue", str),
+        ("severity_level", str),
+        ("priority", str),
+        ("latitude", (float, int)),
+        ("longitude", (float, int)),
+        ("created_at", str),
+        ("citizen_contact", str),
+    ]
+
+    for item in complaints:
+        assert isinstance(item, dict)
+        for field_name, expected_type in pinned_fields:
+            assert field_name in item, f"Missing field '{field_name}' in complaint summary"
+            assert isinstance(item[field_name], expected_type), (
+                f"Field '{field_name}' had type {type(item[field_name])}, expected {expected_type}"
+            )
+

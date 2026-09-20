@@ -66,10 +66,13 @@ export default function AdminDashboard() {
         getComplaints({ limit: 150 }),
         getDepartments().catch(() => []),
       ]);
+      if (!Array.isArray(compList)) {
+        throw new Error('Invalid data received from server for complaints.');
+      }
       setComplaints(compList);
-      setDepartments(deptList);
+      setDepartments(Array.isArray(deptList) ? deptList : []);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to fetch municipal complaints from server');
     } finally {
       setLoading(false);
     }
@@ -155,7 +158,12 @@ export default function AdminDashboard() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Municipal Command Center</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Municipal Command Center</h1>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+              {complaints.length} complaints on server
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-1">
             Real-time closed-loop civic issue intake, department routing and deterministic SLA status.
           </p>
@@ -176,7 +184,7 @@ export default function AdminDashboard() {
         <StatCard
           title="Total Complaints"
           value={stats.total}
-          subtitle="All recorded reports"
+          subtitle={`${complaints.length} loaded from server`}
           icon={Inbox}
           color="blue"
         />
@@ -246,7 +254,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-slate-500" />
             <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Work Queue ({filteredComplaints.length})
+              Work Queue ({filteredComplaints.length} of {complaints.length})
             </span>
             <span className="text-[11px] text-slate-400 font-medium ml-1">
               Sorted by Priority, then Age

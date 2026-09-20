@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
-from backend.app.database import Base, SessionLocal, engine
+from backend.app.database import Base, SessionLocal, assert_safe_for_destructive, engine
 from backend.app.llm import LLMError, reset_backend, set_backend
 from backend.app.main import app
 from backend.app.models import Evidence
@@ -66,6 +66,7 @@ def setup_environment(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.app.routers.complaints.get_settings", lambda: test_settings)
 
     # Initialize tables and seed
+    assert_safe_for_destructive(engine)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

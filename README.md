@@ -40,6 +40,17 @@ python -m backend.scripts.try_agent1 --text "Dangerous deep pothole on MG Road n
 ```
 For more options (`--image`, `--audio`, `--video`, `--lat`, `--lng`, `--no-cache`), see [AGENT1.md](file:///docs/AGENT1.md) or run `python -m backend.scripts.try_agent1 --help`.
 
+### Restore / Reset Demo Database
+To drop, recreate schema, and reseed departments, users, and the 6 baseline Kolhapur complaints while the dev server is running (without deleting the database file):
+```powershell
+# Dry run explanation:
+python -m backend.scripts.reset_demo_db
+
+# Execute reset:
+python -m backend.scripts.reset_demo_db --yes
+```
+
+
 
 ### Start Backend Development Server
 Run from the repository root:

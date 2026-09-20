@@ -124,101 +124,106 @@ def process_submission(
             Path(sp).unlink(missing_ok=True)
         raise SubmissionError("Submission must contain either text or at least one attached media file.")
 
-    # 2. Run Agent 1
-    a1_result: Optional[Agent1Result] = None
-    start_a1 = time.monotonic()
     try:
-        a1_input = Agent1Input(
-            text=submission.text,
-            language_hint=submission.language,
+        # 2. Run Agent 1
+        a1_result: Optional[Agent1Result] = None
+        start_a1 = time.monotonic()
+        try:
+            a1_input = Agent1Input(
+                text=submission.text,
+                language_hint=submission.language,
+                latitude=submission.latitude,
+                longitude=submission.longitude,
+                address_text=submission.address_text,
+                media_paths=saved_paths,
+            )
+            a1_result = run_agent1(a1_input, use_cache=True)
+            elapsed_ms = (time.monotonic() - start_a1) * 1000.0
+            logger.info("Agent 1 classification finished in %.1f ms", elapsed_ms)
+        except (LLMError, LLMConfigError) as llm_err:
+            elapsed_ms = (time.monotonic() - start_a1) * 1000.0
+            logger.warning(
+                "Agent 1 failed after %.1f ms (%s); proceeding with ai_unavailable=True",
+                elapsed_ms,
+                llm_err,
+            )
+            a1_result = None
+
+        # 3. Call Agent 2
+        a2_input = Agent2Input(
+            agent1=a1_result,
+            citizen_name=submission.citizen_name,
+            citizen_contact=submission.citizen_contact,
+            raw_text=submission.text or "[Media upload only]",
+            language=submission.language,
             latitude=submission.latitude,
             longitude=submission.longitude,
             address_text=submission.address_text,
-            media_paths=saved_paths,
+            evidence=evidence_items,
+            ai_unavailable=(a1_result is None),
         )
-        a1_result = run_agent1(a1_input, use_cache=True)
-        elapsed_ms = (time.monotonic() - start_a1) * 1000.0
-        logger.info("Agent 1 classification finished in %.1f ms", elapsed_ms)
-    except (LLMError, LLMConfigError) as llm_err:
-        elapsed_ms = (time.monotonic() - start_a1) * 1000.0
-        logger.warning(
-            "Agent 1 failed after %.1f ms (%s); proceeding with ai_unavailable=True",
-            elapsed_ms,
-            llm_err,
-        )
-        a1_result = None
+        decision = decide(db, a2_input)
 
-    # 3. Call Agent 2
-    a2_input = Agent2Input(
-        agent1=a1_result,
-        citizen_name=submission.citizen_name,
-        citizen_contact=submission.citizen_contact,
-        raw_text=submission.text or "[Media upload only]",
-        language=submission.language,
-        latitude=submission.latitude,
-        longitude=submission.longitude,
-        address_text=submission.address_text,
-        evidence=evidence_items,
-        ai_unavailable=(a1_result is None),
-    )
-    decision = decide(db, a2_input)
+        # 4. Execute CreateComplaintCommand
+        exec_res = execute_command(db, decision.command, Actor.AGENT2)
+        if not exec_res.ok:
+            logger.error("Pipeline command execution rejected: %s", exec_res.error)
+            raise PipelineError(f"Command execution rejected: {exec_res.error}")
 
-    # 4. Execute CreateComplaintCommand
-    exec_res = execute_command(db, decision.command, Actor.AGENT2)
-    if not exec_res.ok:
-        # Clean up files on executor rejection
-        for sp in saved_paths:
-            Path(sp).unlink(missing_ok=True)
-        logger.error("Pipeline command execution rejected: %s", exec_res.error)
-        raise PipelineError(f"Command execution rejected: {exec_res.error}")
+        complaint_id = exec_res.complaint_id or ""
 
-    complaint_id = exec_res.complaint_id or ""
+        # 5. Write audit events for AGENT1 and AGENT2
+        a1_summary_dict: Optional[Dict[str, Any]] = None
+        if a1_result:
+            a1_summary_dict = {
+                "category": a1_result.output.category,
+                "issue": a1_result.output.issue,
+                "confidence": a1_result.output.confidence,
+                "description": a1_result.output.description,
+                "civic_relevance": a1_result.output.civic_relevance,
+            }
+            log_event(
+                db,
+                complaint_id=complaint_id,
+                actor="AGENT1",
+                action="CLASSIFY",
+                detail=a1_summary_dict,
+                confidence=a1_result.output.confidence,
+            )
+        else:
+            log_event(
+                db,
+                complaint_id=complaint_id,
+                actor="AGENT1",
+                action="CLASSIFY",
+                detail={"error": "AI unavailable, classification bypassed"},
+                confidence=0.0,
+            )
 
-    # 5. Write audit events for AGENT1 and AGENT2
-    a1_summary_dict: Optional[Dict[str, Any]] = None
-    if a1_result:
-        a1_summary_dict = {
-            "category": a1_result.output.category,
-            "issue": a1_result.output.issue,
-            "confidence": a1_result.output.confidence,
-            "description": a1_result.output.description,
-            "civic_relevance": a1_result.output.civic_relevance,
+        a2_summary_dict = {
+            "severity_score": decision.severity.score,
+            "severity_level": decision.severity.level,
+            "priority": decision.priority.priority,
+            "department_code": decision.department_code,
+            "outcome": decision.outcome,
+            "trace": decision.trace,
         }
         log_event(
             db,
             complaint_id=complaint_id,
-            actor="AGENT1",
-            action="CLASSIFY",
-            detail=a1_summary_dict,
-            confidence=a1_result.output.confidence,
-        )
-    else:
-        log_event(
-            db,
-            complaint_id=complaint_id,
-            actor="AGENT1",
-            action="CLASSIFY",
-            detail={"error": "AI unavailable, classification bypassed"},
-            confidence=0.0,
+            actor="AGENT2",
+            action="DECIDE",
+            detail=a2_summary_dict,
         )
 
-    a2_summary_dict = {
-        "severity_score": decision.severity.score,
-        "severity_level": decision.severity.level,
-        "priority": decision.priority.priority,
-        "department_code": decision.department_code,
-        "outcome": decision.outcome,
-        "trace": decision.trace,
-    }
-    log_event(
-        db,
-        complaint_id=complaint_id,
-        actor="AGENT2",
-        action="DECIDE",
-        detail=a2_summary_dict,
-    )
-
-    db.commit()
+        db.commit()
+    except Exception as exc:
+        for sp in saved_paths:
+            Path(sp).unlink(missing_ok=True)
+        if isinstance(exc, (SubmissionError, PipelineError)):
+            raise
+        logger.exception("Pipeline execution failed unexpectedly")
+        raise PipelineError("Internal error while processing the complaint") from exc
 
     return PipelineResult(
         complaint_id=complaint_id,

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -10,6 +11,8 @@ from ..database import get_db
 from ..models import Complaint, ComplaintEvent, Department, Evidence
 from ..pipeline import PipelineError, SubmissionError, SubmissionPayload, process_submission
 from ..schemas import ComplaintDetail, ComplaintEventSchema, ComplaintSummary
+
+logger = logging.getLogger("resolveit.complaints")
 
 router = APIRouter(tags=["complaints"])
 
@@ -76,8 +79,12 @@ def create_complaint(
         res = process_submission(db, payload, uploads)
     except SubmissionError as se:
         raise HTTPException(status_code=422, detail=str(se))
-    except PipelineError as pe:
-        raise HTTPException(status_code=500, detail=str(pe))
+    except (PipelineError, Exception):
+        logger.exception("Unexpected error occurred in complaint intake")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal error while processing the complaint",
+        )
 
     dept = db.query(Department).filter_by(code=res.decision.department_code).first()
     dept_info = {
@@ -135,20 +142,24 @@ def get_evidence_file(id: int, db: Session = Depends(get_db)):
 def list_complaints(
     status: Optional[str] = Query(None, description="Filter by status"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    department_id: Optional[int] = Query(None, description="Filter by department ID"),
+    department_id: Optional[str] = Query(None, description="Filter by department ID"),
     citizen_contact: Optional[str] = Query(None, description="Filter by citizen contact"),
     limit: int = Query(50, ge=1, le=200, description="Max complaints to return"),
     db: Session = Depends(get_db),
 ):
     query = db.query(Complaint)
-    if status:
-        query = query.filter(Complaint.status == status)
-    if category:
-        query = query.filter(Complaint.category == category)
-    if department_id:
-        query = query.filter(Complaint.department_id == department_id)
-    if citizen_contact:
-        query = query.filter(Complaint.citizen_contact == citizen_contact)
+    if status and status.strip():
+        query = query.filter(Complaint.status == status.strip())
+    if category and category.strip():
+        query = query.filter(Complaint.category == category.strip())
+    if department_id and department_id.strip():
+        try:
+            dept_int = int(department_id.strip())
+            query = query.filter(Complaint.department_id == dept_int)
+        except ValueError:
+            pass
+    if citizen_contact and citizen_contact.strip():
+        query = query.filter(Complaint.citizen_contact == citizen_contact.strip())
 
     return query.order_by(Complaint.created_at.desc()).limit(limit).all()
 

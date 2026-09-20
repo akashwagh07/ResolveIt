@@ -18,12 +18,15 @@ export default function CitizenDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getComplaints({
-        citizen_contact: session?.citizenContact || '',
-      });
+      const contact = session?.citizenContact ? session.citizenContact.trim() : '';
+      const filters = contact ? { citizen_contact: contact } : {};
+      const data = await getComplaints(filters);
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid data format received from server.');
+      }
       setComplaints(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to fetch complaints');
     } finally {
       setLoading(false);
     }

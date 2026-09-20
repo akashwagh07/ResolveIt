@@ -40,15 +40,25 @@ async function request(endpoint, options = {}) {
 
 export async function getComplaints(filters = {}) {
   const params = new URLSearchParams();
-  if (filters.status) params.append('status', filters.status);
-  if (filters.category) params.append('category', filters.category);
-  if (filters.department_id) params.append('department_id', filters.department_id);
-  if (filters.citizen_contact) params.append('citizen_contact', filters.citizen_contact);
-  if (filters.limit) params.append('limit', filters.limit);
+
+  // Ensure empty or whitespace-only parameters are never sent to the backend
+  const isValidParam = (val) => {
+    if (val === null || val === undefined) return false;
+    return String(val).trim().length > 0;
+  };
+
+  if (isValidParam(filters.status)) params.append('status', String(filters.status).trim());
+  if (isValidParam(filters.category)) params.append('category', String(filters.category).trim());
+  if (isValidParam(filters.department_id)) params.append('department_id', String(filters.department_id).trim());
+  if (isValidParam(filters.citizen_contact)) params.append('citizen_contact', String(filters.citizen_contact).trim());
+  if (isValidParam(filters.limit)) params.append('limit', String(filters.limit).trim());
 
   const queryString = params.toString();
   const endpoint = `/api/complaints${queryString ? `?${queryString}` : ''}`;
-  return await request(endpoint);
+  const response = await request(endpoint);
+
+  // Contract: GET /api/complaints returns an array of ComplaintSummary objects.
+  return Array.isArray(response) ? response : (response?.complaints || []);
 }
 
 export async function getComplaint(id) {

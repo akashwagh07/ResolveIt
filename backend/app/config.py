@@ -1,7 +1,13 @@
 from functools import lru_cache
+import logging
+from pathlib import Path
 from typing import Optional
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("resolveit.config")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_LOGGED_DB_PATH = False
 
 
 class Settings(BaseSettings):
@@ -35,7 +41,35 @@ class Settings(BaseSettings):
             self.GEMINI_FALLBACK_MODELS = self.GEMINI_FALLBACK_MODEL
         return self
 
+    @model_validator(mode="after")
+    def _resolve_sqlite_url(self) -> "Settings":
+        global _LOGGED_DB_PATH
+        db_url = self.DATABASE_URL
+        resolved_path_to_log: Optional[str] = None
+
+        if db_url.startswith("sqlite:///"):
+            path_part = db_url[len("sqlite:///"):]
+            if path_part and path_part != ":memory:":
+                p = Path(path_part)
+                if not p.is_absolute():
+                    resolved_file = (PROJECT_ROOT / p).resolve()
+                    self.DATABASE_URL = f"sqlite:///{resolved_file.as_posix()}"
+                    resolved_path_to_log = str(resolved_file)
+                else:
+                    resolved_path_to_log = str(p.resolve())
+            elif path_part == ":memory:":
+                resolved_path_to_log = ":memory:"
+        elif db_url.startswith("sqlite://"):
+            resolved_path_to_log = ":memory:"
+
+        if resolved_path_to_log and not _LOGGED_DB_PATH:
+            logger.info("%s", resolved_path_to_log)
+            _LOGGED_DB_PATH = True
+
+        return self
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
