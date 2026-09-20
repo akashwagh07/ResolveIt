@@ -1,0 +1,122 @@
+[
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "ROADS",
+    "name": "Roads",
+    "categories": ["ROADS"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "STREET_LIGHTING",
+    "name": "Electrical/Street Lighting",
+    "categories": ["STREET_LIGHTING"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "WASTE",
+    "name": "Waste Management",
+    "categories": ["WASTE"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "WATER",
+    "name": "Water Supply",
+    "categories": ["WATER"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "DRAINAGE",
+    "name": "Drainage/Sewerage",
+    "categories": ["DRAINAGE"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "PARKS_ENVIRONMENT",
+    "name": "Parks/Garden",
+    "categories": ["PARKS_ENVIRONMENT"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "ENCROACHMENT",
+    "name": "Building/Town Planning",
+    "categories": ["ENCROACHMENT"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "ANIMALS",
+    "name": "Animal Control",
+    "categories": ["ANIMALS"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "TRAFFIC",
+    "name": "Traffic/Infrastructure",
+    "categories": ["TRAFFIC"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  },
+  {
+    "_comment": "Generic escalation role titles; real municipal titles must be verified locally.",
+    "code": "SANITATION",
+    "name": "Sanitation/Health",
+    "categories": ["SANITATION", "OTHER"],
+    "escalation_chain": [
+      "Ward Officer",
+      "Department Head",
+      "Municipal Commissioner"
+    ],
+    "sla_hours": null
+  }
+]
