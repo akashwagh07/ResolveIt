@@ -107,6 +107,16 @@ export default function Header() {
         <div className="flex items-center gap-3">
           {session ? (
             <div className="flex items-center gap-2">
+              {isCitizen && (
+                <Link
+                  to="/citizen/report"
+                  className="flex md:hidden items-center gap-1 px-2.5 py-1 rounded-md bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold"
+                >
+                  <PlusCircle className="w-3 h-3" />
+                  Report
+                </Link>
+              )}
+
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700">
                 <User className="w-3.5 h-3.5 text-slate-500" />
                 <span className="font-semibold">{session.role}</span>
