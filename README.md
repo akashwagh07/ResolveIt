@@ -20,6 +20,8 @@ Set your Gemini configuration in `.env`:
 - `GEMINI_MODEL=gemini-3.6-flash` (Primary multimodal classification model)
 - `GEMINI_FALLBACK_MODELS=gemini-3.5-flash,gemini-3.7-flash` (Fallback chain tried sequentially on failure)
 - `GEMINI_API_KEY`: Your Google Gemini API key
+- `LLM_TOTAL_TIMEOUT_SECONDS=25`: Total timeout budget per classification across all models & retries
+- `LLM_QUOTA_COOLDOWN_SECONDS=120`: Circuit breaker cooldown duration when all models return quota exhaustion (HTTP 429)
 
 
 ## Run
@@ -52,6 +54,18 @@ python -m backend.scripts.reset_demo_db --yes
 
 
 
+### Run End-to-End Lifecycle Demo Flow
+Run against a running backend server to test the entire closed-loop lifecycle (submit report -> admin assign -> officer start work -> officer resolution upload -> admin approve -> citizen confirm):
+```powershell
+python -m backend.scripts.demo_flow --base http://127.0.0.1:8000
+```
+Optional flags:
+- `--text`: Custom complaint text (default: `"Huge pothole near the school gate for a week, bikes cannot pass"`)
+- `--lat`, `--lng`: Custom coordinates (default: `16.7112`, `74.2405`)
+- `--name`: Citizen name (default: `"Test User"`)
+- `--contact`: Citizen phone number (default: `"+91 9000000000"`)
+*Note: If submission enters `HUMAN_REVIEW` (e.g. AI quota exhaustion or low confidence), the demo script automatically prompts admin confirmation before proceeding with department-matched officer assignment.*
+
 ### Start Backend Development Server
 Run from the repository root:
 ```powershell
@@ -75,11 +89,18 @@ The frontend will start on [http://localhost:5173](http://localhost:5173) with a
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/health` | Health check returning operational status and virtual clock timestamp |
+| `GET` | `/api/health` | Health check returning operational status, virtual clock, and LLM circuit breaker status |
 | `GET` | `/api/departments` | List all 10 canonical departments with escalation chains and category codes |
-| `GET` | `/api/complaints` | List complaints with optional query filters (`status`, `category`, `department_id`, `limit`) |
-| `GET` | `/api/complaints/{id}` | Detailed complaint report including evidence, ai_reasoning, and events |
+| `GET` | `/api/auth/whoami` | Resolve demo identity from headers (`X-Demo-Role`, `X-Demo-User-Id`, `X-Citizen-Contact`) |
+| `GET` | `/api/users` | List seeded demo accounts for role switching (`OFFICER` or `ADMIN`) |
+| `GET` | `/api/complaints` | List complaints with query filters (`status`, `category`, `department_id`, `assigned_officer_id`, `needs_review`, `citizen_contact`, `limit`) |
+| `POST` | `/api/complaints` | Intake citizen complaint with optional media (text, image, audio, video) |
+| `GET` | `/api/complaints/{id}` | Detailed complaint with resolutions, before/after evidence URLs, officer & department info |
 | `GET` | `/api/complaints/{id}/events` | Chronological append-only audit event log for the specified complaint |
+| `GET` | `/api/complaints/{id}/actions` | List actions currently available to the authenticated caller on this complaint |
+| `POST` | `/api/complaints/{id}/actions/{action}` | Execute permitted workflow action through the command gate |
+| `POST` | `/api/complaints/{id}/resolution` | Officer upload of resolution description and 1-4 after images with verification hook |
+| `GET` | `/api/evidence/{id}/file` | Securely serve uploaded complaint and resolution evidence files |
 
 ## Tech Stack
 

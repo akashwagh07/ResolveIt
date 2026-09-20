@@ -5,8 +5,10 @@ from datetime import datetime
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import random
+import re
 import time
 from typing import Any, Callable, Dict, Generic, List, Literal, Optional, Protocol, Type, TypeVar
 from pydantic import BaseModel, ValidationError
@@ -26,6 +28,11 @@ TOTAL_MEDIA_LIMIT_BYTES: int = 18 * 1024 * 1024  # 18 MB inline limit
 
 class LLMError(Exception):
     """Base exception for LLM operations."""
+    pass
+
+
+class LLMUnavailableError(LLMError):
+    """Raised when LLM is unavailable (e.g. during circuit breaker cooldown)."""
     pass
 
 
@@ -211,9 +218,11 @@ class GeminiBackend:
             raise exc
 
 
-# Injectable backend and sleep
+# Injectable backend, sleep, and monotonic clock
 _backend_override: Optional[LLMBackend] = None
 _sleep_fn: Callable[[float], None] = time.sleep
+_monotonic_clock: Callable[[], float] = time.monotonic
+_cooldown_until: Optional[float] = None
 
 
 def get_backend() -> LLMBackend:
@@ -241,6 +250,49 @@ def set_sleep_fn(fn: Callable[[float], None]) -> None:
 def reset_sleep_fn() -> None:
     global _sleep_fn
     _sleep_fn = time.sleep
+
+
+def set_monotonic_clock(fn: Callable[[], float]) -> None:
+    global _monotonic_clock
+    _monotonic_clock = fn
+
+
+def reset_monotonic_clock() -> None:
+    global _monotonic_clock
+    _monotonic_clock = time.monotonic
+
+
+def get_monotonic_clock() -> Callable[[], float]:
+    return _monotonic_clock
+
+
+def get_llm_status() -> tuple[str, int]:
+    """Return (status, cooldown_seconds_left). Status is 'ok' or 'cooldown'."""
+    global _cooldown_until
+    now = _monotonic_clock()
+    if _cooldown_until is not None:
+        if now < _cooldown_until:
+            seconds_left = int(math.ceil(_cooldown_until - now))
+            return "cooldown", max(1, seconds_left)
+        else:
+            logger.info("LLM circuit breaker: leaving cooldown (cooldown period expired)")
+            _cooldown_until = None
+            return "ok", 0
+    return "ok", 0
+
+
+def reset_cooldown() -> None:
+    global _cooldown_until
+    _cooldown_until = None
+
+
+def _enter_cooldown(seconds: float) -> None:
+    global _cooldown_until
+    _cooldown_until = _monotonic_clock() + seconds
+    logger.warning(
+        "LLM circuit breaker: entering cooldown for %d seconds due to quota exhaustion",
+        int(seconds),
+    )
 
 
 def clear_cache() -> int:
@@ -298,6 +350,47 @@ def _is_non_retryable_model_error(exc: Exception) -> bool:
     return any(ind in err_str or ind in type_str for ind in indicators)
 
 
+def _is_quota_error(exc: Exception) -> bool:
+    """Classify 429 responses whose status or message is RESOURCE_EXHAUSTED as QUOTA errors."""
+    err_str = str(exc).lower()
+    code = getattr(exc, "code", getattr(exc, "status_code", None))
+    status_attr = str(getattr(exc, "status", "")).lower()
+    has_429 = (code == 429) or ("429" in err_str)
+    has_resource_exhausted = (
+        "resource_exhausted" in err_str
+        or "resourceexhausted" in err_str
+        or "resource_exhausted" in status_attr
+        or "resourceexhausted" in status_attr
+    )
+    return bool(has_429 and has_resource_exhausted)
+
+
+def _extract_retry_delay(exc: Exception) -> Optional[float]:
+    """Extract server-supplied retry delay in seconds, if present."""
+    for attr in ("retry_delay", "retry_after"):
+        val = getattr(exc, attr, None)
+        if val is not None:
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                pass
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        headers = getattr(resp, "headers", {})
+        if "retry-after" in headers:
+            try:
+                return float(headers["retry-after"])
+            except (ValueError, TypeError):
+                pass
+    m = re.search(r'retry[\s_-]?(?:after|in|delay)[\s:]*([0-9]+(?:\.[0-9]+)?)s?', str(exc), re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return None
+
+
 def _is_transient_error(exc: Exception) -> bool:
     """Check if error is transient (HTTP 429, 5xx, or network timeouts)."""
     err_str = str(exc).lower()
@@ -323,7 +416,7 @@ def generate_json(
 ) -> LLMResult[T]:
     """
     Execute structured LLM generation with disk caching, transient retry,
-    validation repair, and model fallback.
+    validation repair, quota handling, circuit breaker cooldown, and model fallback.
     """
     settings = get_settings()
     backend = get_backend()
@@ -367,7 +460,7 @@ def generate_json(
         if not settings.GEMINI_API_KEY:
             raise LLMConfigError("GEMINI_API_KEY is not configured in settings")
 
-    # Cache handling
+    # Cache handling: cache hits are served even during cooldown
     should_cache = settings.LLM_CACHE_ENABLED if use_cache is None else use_cache
     cache_key = _compute_cache_key(
         schema=schema,
@@ -401,20 +494,35 @@ def generate_json(
         except Exception as exc:
             logger.warning("Cache read failed for key %s (bypassing): %s", cache_key, exc)
 
+    # Circuit breaker check: raise immediately during cooldown if cache miss
+    status, seconds_left = get_llm_status()
+    if status == "cooldown":
+        raise LLMUnavailableError(f"LLM is in quota cooldown ({seconds_left}s remaining)")
+
     max_attempts = max(1, settings.LLM_MAX_RETRIES + 1)
     timeout_secs = settings.LLM_TIMEOUT_SECONDS
+    total_timeout = float(settings.LLM_TOTAL_TIMEOUT_SECONDS)
 
-    start_time = time.monotonic()
+    start_time = _monotonic_clock()
     total_attempts = 0
     model_failure_summaries: List[Dict[str, Any]] = []
 
     for model_idx, model_name in enumerate(models_to_try):
+        elapsed = _monotonic_clock() - start_time
+        if elapsed >= total_timeout:
+            break
+
         current_prompt = prompt
         repair_attempted = False
         model_attempts = 0
         last_error: Optional[Exception] = None
+        model_was_quota = False
 
         while model_attempts < max_attempts:
+            elapsed = _monotonic_clock() - start_time
+            if elapsed >= total_timeout:
+                break
+
             model_attempts += 1
             total_attempts += 1
             try:
@@ -451,8 +559,13 @@ def generate_json(
                     # Repair retry failed, skip remaining retries for this model
                     break
 
-                # Success
-                latency_ms = (time.monotonic() - start_time) * 1000.0
+                # Success: end cooldown if active
+                global _cooldown_until
+                if _cooldown_until is not None:
+                    logger.info("LLM circuit breaker: leaving cooldown (call succeeded)")
+                    _cooldown_until = None
+
+                latency_ms = (_monotonic_clock() - start_time) * 1000.0
 
                 # Write to cache
                 if should_cache:
@@ -495,13 +608,31 @@ def generate_json(
                     exc.__class__.__name__,
                 )
 
-                # 404 and 400 are non-retryable on that model: skip remaining retries and move straight to next model
+                # Check if quota error (429 RESOURCE_EXHAUSTED)
+                if _is_quota_error(exc):
+                    model_was_quota = True
+                    delay = _extract_retry_delay(exc)
+                    # at most one retry on that model, and only if delay <= 5 seconds
+                    if model_attempts == 1 and delay is not None and delay <= 5.0:
+                        elapsed = _monotonic_clock() - start_time
+                        if elapsed + delay >= total_timeout:
+                            break
+                        _sleep_fn(delay)
+                        continue
+                    else:
+                        # Otherwise move to next model immediately
+                        break
+
+                # 404 and 400 are non-retryable on that model: skip remaining retries and move to next model
                 if _is_non_retryable_model_error(exc):
                     break
 
-                # Transient errors: up to 4 attempts per model with exponential backoff plus random jitter (about 1s, 2s, 4s)
+                # Plain 503 / overload errors: keep existing retry and backoff
                 if _is_transient_error(exc) and model_attempts < max_attempts:
                     backoff = float(2 ** (model_attempts - 1)) + random.uniform(0.0, 0.25)
+                    elapsed = _monotonic_clock() - start_time
+                    if elapsed + backoff >= total_timeout:
+                        break
                     _sleep_fn(backoff)
                     continue
 
@@ -517,8 +648,17 @@ def generate_json(
                 "attempts": model_attempts,
                 "err_class": err_cls,
                 "err_msg": err_msg,
+                "is_quota": model_was_quota,
             }
         )
+
+    # Circuit breaker: if every model failed with QUOTA errors in one call, enter cooldown
+    if (
+        model_failure_summaries
+        and len(model_failure_summaries) == len(models_to_try)
+        and all(s.get("is_quota", False) for s in model_failure_summaries)
+    ):
+        _enter_cooldown(float(settings.LLM_QUOTA_COOLDOWN_SECONDS))
 
     # If all models and retries failed
     report_lines: List[str] = []
@@ -530,4 +670,6 @@ def generate_json(
         report_lines.append(f"{s['model']} ({s['attempts']} attempts): {s['err_class']}: {clean_msg}")
 
     summary_str = "; ".join(report_lines)
+    if _monotonic_clock() - start_time >= total_timeout:
+        raise LLMError(f"LLM generation exceeded total timeout ({int(total_timeout)}s): {summary_str}")
     raise LLMError(f"LLM generation failed across all models: {summary_str}")

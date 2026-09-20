@@ -18,9 +18,12 @@ class Settings(BaseSettings):
     LLM_CACHE_DIR: str = "./.llm_cache"
     LLM_CACHE_ENABLED: bool = True
     LLM_TIMEOUT_SECONDS: int = 60
+    LLM_TOTAL_TIMEOUT_SECONDS: int = 25
+    LLM_QUOTA_COOLDOWN_SECONDS: int = 120
     LLM_MAX_RETRIES: int = 3
     TIME_SCALE: float = 1.0
     OFFICER_PASSCODE: str = "officer123"
+    VERIFIER: str = "stub"
     DATABASE_URL: str = "sqlite:///./resolveit.db"
     UPLOAD_DIR: str = "./uploads"
     FRONTEND_ORIGIN: str = "http://localhost:5173"

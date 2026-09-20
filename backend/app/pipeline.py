@@ -17,7 +17,7 @@ from .commands import Actor
 from .config import get_settings
 from .events import log_event
 from .executor import execute_command
-from .llm import MEDIA_WHITELIST, LLMConfigError, LLMError, MediaError, load_media
+from .llm import MEDIA_WHITELIST, LLMConfigError, LLMError, LLMUnavailableError, MediaError, load_media
 
 logger = logging.getLogger("resolveit.pipeline")
 
@@ -127,6 +127,7 @@ def process_submission(
     try:
         # 2. Run Agent 1
         a1_result: Optional[Agent1Result] = None
+        in_cooldown = False
         start_a1 = time.monotonic()
         try:
             a1_input = Agent1Input(
@@ -140,6 +141,15 @@ def process_submission(
             a1_result = run_agent1(a1_input, use_cache=True)
             elapsed_ms = (time.monotonic() - start_a1) * 1000.0
             logger.info("Agent 1 classification finished in %.1f ms", elapsed_ms)
+        except LLMUnavailableError as unavail_err:
+            in_cooldown = True
+            elapsed_ms = (time.monotonic() - start_a1) * 1000.0
+            logger.warning(
+                "Agent 1 skipped due to quota cooldown after %.1f ms (%s); proceeding with ai_unavailable=True",
+                elapsed_ms,
+                unavail_err,
+            )
+            a1_result = None
         except (LLMError, LLMConfigError) as llm_err:
             elapsed_ms = (time.monotonic() - start_a1) * 1000.0
             logger.warning(
@@ -161,6 +171,7 @@ def process_submission(
             address_text=submission.address_text,
             evidence=evidence_items,
             ai_unavailable=(a1_result is None),
+            ai_unavailable_reason="quota cooldown" if in_cooldown else None,
         )
         decision = decide(db, a2_input)
 
@@ -191,12 +202,14 @@ def process_submission(
                 confidence=a1_result.output.confidence,
             )
         else:
+            audit_reason = "AI unavailable (quota cooldown)" if in_cooldown else "AI unavailable"
             log_event(
                 db,
                 complaint_id=complaint_id,
                 actor="AGENT1",
                 action="CLASSIFY",
-                detail={"error": "AI unavailable, classification bypassed"},
+                detail={"error": audit_reason},
+                reasoning=audit_reason,
                 confidence=0.0,
             )
 

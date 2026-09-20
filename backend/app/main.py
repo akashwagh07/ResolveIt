@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .database import Base, SessionLocal, engine
-from .routers import complaints, departments, health
+from .routers import actions, auth, complaints, departments, health
 from .seed import seed_database
 
 
@@ -43,5 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(departments.router)
 app.include_router(complaints.router)
+app.include_router(actions.router)

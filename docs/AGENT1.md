@@ -92,10 +92,19 @@ The raw LLM output is never trusted blindly:
 - `GEMINI_FALLBACK_MODEL`: Supported as a backward-compatible alias.
 - The wrapper tries `GEMINI_MODEL` first, then each fallback model in order, skipping blanks and duplicate models.
 
-### Retry Rules
-- **Transient Errors** (`429`, `500`, `502`, `503`, `504`, timeouts): Up to 4 attempts per model with exponential backoff plus random jitter (intervals of ~1s, ~2s, ~4s), using an injectable sleep function so tests run synchronously without delay.
+### Retry & Quota Rules
+- **Quota Errors** (`429` with `RESOURCE_EXHAUSTED` status/message):
+  - Retried at most once on that model, and only if the server specifies a retry delay of 5 seconds or less (`retry-after` header or message delay).
+  - If retry delay > 5s or no short delay specified, immediately moves to the next fallback model without retrying.
+- **Transient Overload Errors** (`500`, `502`, `503`, `504`, generic timeouts): Up to 4 attempts per model with exponential backoff plus random jitter (intervals of ~1s, ~2s, ~4s), using an injectable sleep function.
 - **Non-Retryable Errors** (`404`, `400`, bad request, model not found): Skip remaining retries on that model and proceed directly to the next fallback model.
 - **Validation / Invalid JSON**: A single repair retry attempt with repair prompt appended before moving to the next model.
+- **Total Time Budget (`LLM_TOTAL_TIMEOUT_SECONDS`)**: Default 25 seconds across all models and retries (including sleep delays). If exceeded, halts and raises `LLMError` detailing all models and attempts tried.
+- **Circuit Breaker Cooldown (`LLM_QUOTA_COOLDOWN_SECONDS`)**:
+  - When all models fail due to QUOTA errors in a single call, the LLM enters cooldown for 120 seconds (measured with an injectable monotonic clock, independent of the virtual app clock).
+  - During cooldown, `generate_json` immediately raises `LLMUnavailableError` without making any network calls; cache hits continue to be served.
+  - Cooldown expires automatically after the timeout or resets upon any successful call.
+  - Health check (`GET /api/health`) reports `llm: {"status": "ok" | "cooldown", "cooldown_seconds_left": int}`.
 - **Error Visibility**: When all models fail, `LLMError` lists each model tried, the number of attempts made on it, and the last error class and message (truncated to 300 characters). The API key is sanitized and never printed.
 
 ### Caching & Storage

@@ -23,6 +23,7 @@ class Agent2Input(BaseModel):
     address_text: Optional[str] = None
     evidence: List[Dict[str, Any]] = Field(default_factory=list)
     ai_unavailable: bool = False
+    ai_unavailable_reason: Optional[str] = None
 
 
 class Agent2Decision(BaseModel):
@@ -85,8 +86,13 @@ def decide(db: Session, inp: Agent2Input) -> Agent2Decision:
         confidence = 0.0
         civic_relevance = "MEDIUM"
         needs_review = True
-        review_reasons.append("AI unavailable")
-        trace.append("AI analysis was unavailable; routed to HUMAN_REVIEW with default fallback classification.")
+        reason_str = (
+            f"AI unavailable ({inp.ai_unavailable_reason})"
+            if inp.ai_unavailable_reason
+            else "AI unavailable"
+        )
+        review_reasons.append(reason_str)
+        trace.append(f"AI analysis was unavailable ({reason_str}); routed to HUMAN_REVIEW with default fallback classification.")
 
         sev = compute_severity("OTHER", "OTHER")
         prio = compute_priority(sev.level)
