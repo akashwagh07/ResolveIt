@@ -14,6 +14,7 @@ def list_complaints(
     status: Optional[str] = Query(None, description="Filter by status"),
     category: Optional[str] = Query(None, description="Filter by category"),
     department_id: Optional[int] = Query(None, description="Filter by department ID"),
+    citizen_contact: Optional[str] = Query(None, description="Filter by citizen contact"),
     limit: int = Query(50, ge=1, le=200, description="Max complaints to return"),
     db: Session = Depends(get_db),
 ):
@@ -24,6 +25,8 @@ def list_complaints(
         query = query.filter(Complaint.category == category)
     if department_id:
         query = query.filter(Complaint.department_id == department_id)
+    if citizen_contact:
+        query = query.filter(Complaint.citizen_contact == citizen_contact)
 
     return query.order_by(Complaint.created_at.desc()).limit(limit).all()
 

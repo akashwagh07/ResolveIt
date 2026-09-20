@@ -96,19 +96,34 @@ CATEGORIES: Dict[str, List[str]] = {
     ],
 }
 
+ALIASES: Dict[str, tuple[str, str]] = {
+    "ANIMAL_CARCASS": ("WASTE", "DEAD_ANIMAL"),
+}
+
 
 def normalize_code(code: str) -> str:
     return code.strip().upper().replace(" ", "_").replace("-", "_")
 
 
+def resolve_alias(category: str, issue: str) -> tuple[str, str]:
+    """Resolve known canonical aliases to canonical category and issue codes."""
+    cat_norm = normalize_code(category)
+    iss_norm = normalize_code(issue)
+    if iss_norm in ALIASES:
+        return ALIASES[iss_norm]
+    if cat_norm in ALIASES:
+        return ALIASES[cat_norm]
+    return cat_norm, iss_norm
+
+
 def is_valid_issue(category: str, issue: str) -> bool:
     """Validate if an issue belongs to a category in the canonical ontology."""
-    cat_norm = normalize_code(category)
+    cat_norm, iss_norm = resolve_alias(category, issue)
     if cat_norm not in CATEGORIES:
         return False
 
     if cat_norm == "OTHER":
         return True
 
-    iss_norm = normalize_code(issue)
     return iss_norm in CATEGORIES[cat_norm]
+

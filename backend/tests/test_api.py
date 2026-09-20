@@ -68,3 +68,11 @@ def test_list_complaints_with_filters(client):
     assert response.status_code == 200
     for c in response.json():
         assert c["category"] == "ROADS"
+
+    response = client.get("/api/complaints?citizen_contact=%2B91+9822012345")
+    assert response.status_code == 200
+    res_data = response.json()
+    assert len(res_data) >= 1
+    for c in res_data:
+        assert c["citizen_contact"] == "+91 9822012345"
+
