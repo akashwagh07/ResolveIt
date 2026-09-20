@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Inbox,
   Clock,
@@ -10,6 +10,8 @@ import {
   RefreshCw,
   MapPin,
   ExternalLink,
+  ShieldCheck,
+  User,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -20,7 +22,7 @@ import {
   Tooltip,
   Cell,
 } from 'recharts';
-import { getComplaints, getDepartments } from '../lib/api';
+import { getComplaints, getDepartments, getUsers } from '../lib/api';
 import StatusBadge from '../components/StatusBadge';
 import SeverityBadge from '../components/SeverityBadge';
 import PriorityBadge from '../components/PriorityBadge';
@@ -29,6 +31,7 @@ import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 
 const PRIORITY_ORDER = { EMERGENCY: 4, HIGH: 3, STANDARD: 2, NORMAL: 1 };
+const WAITING_ON_ADMIN_STATUSES = new Set(['CLASSIFIED', 'UNDER_REVIEW', 'HUMAN_REVIEW', 'ADMIN_VERIFICATION']);
 
 const STATUS_COLORS = {
   SUBMITTED: '#64748b',
@@ -48,29 +51,42 @@ const STATUS_COLORS = {
 };
 
 export default function AdminDashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [complaints, setComplaints] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [officers, setOfficers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // Filters
+  const initialQuickFilter = searchParams.get('filter') === 'needs_review' ? 'needs_review' : '';
+  const [quickFilter, setQuickFilter] = useState(initialQuickFilter);
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+
+  // Sync with URL params
+  useEffect(() => {
+    if (searchParams.get('filter') === 'needs_review') {
+      setQuickFilter('needs_review');
+    }
+  }, [searchParams]);
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [compList, deptList] = await Promise.all([
+      const [compList, deptList, officerList] = await Promise.all([
         getComplaints({ limit: 150 }),
         getDepartments().catch(() => []),
+        getUsers('OFFICER').catch(() => []),
       ]);
       if (!Array.isArray(compList)) {
         throw new Error('Invalid data received from server for complaints.');
       }
       setComplaints(compList);
       setDepartments(Array.isArray(deptList) ? deptList : []);
+      setOfficers(Array.isArray(officerList) ? officerList : []);
     } catch (err) {
       setError(err.message || 'Failed to fetch municipal complaints from server');
     } finally {
@@ -85,12 +101,15 @@ export default function AdminDashboard() {
   // Compute stat card metrics
   const stats = useMemo(() => {
     const total = complaints.length;
-    const inProgress = complaints.filter(
-      (c) => c.status === 'IN_PROGRESS' || c.status === 'ASSIGNED' || c.status === 'UNDER_REVIEW'
+    const needsReview = complaints.filter(
+      (c) => c.needs_review || c.status === 'HUMAN_REVIEW'
+    ).length;
+    const waitingOnAdmin = complaints.filter(
+      (c) => WAITING_ON_ADMIN_STATUSES.has(c.status)
     ).length;
     const escalated = complaints.filter((c) => c.status === 'ESCALATED').length;
     const resolved = complaints.filter((c) => c.status === 'RESOLVED').length;
-    return { total, inProgress, escalated, resolved };
+    return { total, needsReview, waitingOnAdmin, escalated, resolved };
   }, [complaints]);
 
   // Status distribution chart data
@@ -109,6 +128,13 @@ export default function AdminDashboard() {
   // Filter and sort complaints: by Priority then Age (older first)
   const filteredComplaints = useMemo(() => {
     let result = [...complaints];
+
+    if (quickFilter === 'needs_review') {
+      result = result.filter((c) => c.needs_review || c.status === 'HUMAN_REVIEW');
+    } else if (quickFilter === 'waiting_on_admin') {
+      result = result.filter((c) => WAITING_ON_ADMIN_STATUSES.has(c.status));
+    }
+
     if (statusFilter) {
       result = result.filter((c) => c.status === statusFilter);
     }
@@ -125,7 +151,7 @@ export default function AdminDashboard() {
       // Older complaints have earlier created_at timestamps (higher age)
       return new Date(a.created_at) - new Date(b.created_at);
     });
-  }, [complaints, statusFilter, categoryFilter, deptFilter]);
+  }, [complaints, quickFilter, statusFilter, categoryFilter, deptFilter]);
 
   // Unique categories for filter dropdown
   const uniqueCategories = useMemo(() => {
@@ -180,25 +206,32 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stat Cards Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard
           title="Total Complaints"
           value={stats.total}
-          subtitle={`${complaints.length} loaded from server`}
+          subtitle={`${complaints.length} on server`}
           icon={Inbox}
           color="blue"
         />
         <StatCard
-          title="Active / In Progress"
-          value={stats.inProgress}
-          subtitle="Assigned & in field"
+          title="Needs Review"
+          value={stats.needsReview}
+          subtitle="Low conf / AI review"
+          icon={AlertTriangle}
+          color="amber"
+        />
+        <StatCard
+          title="Waiting on Admin"
+          value={stats.waitingOnAdmin}
+          subtitle="Triage & verify"
           icon={Clock}
           color="purple"
         />
         <StatCard
           title="Escalated"
           value={stats.escalated}
-          subtitle="Breached SLA window"
+          subtitle="SLA breached"
           icon={AlertTriangle}
           color="rose"
         />
@@ -249,19 +282,71 @@ export default function AdminDashboard() {
 
       {/* Work-queue Table with Filters */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* Filter bar */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-500" />
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Work Queue ({filteredComplaints.length} of {complaints.length})
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium ml-1">
-              Sorted by Priority, then Age
-            </span>
+        {/* Quick Filter Chips and Dropdown Bar */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Work Queue ({filteredComplaints.length} of {complaints.length})
+              </span>
+              <span className="text-[11px] text-slate-400 font-medium ml-1">
+                Sorted by Priority, then Age
+              </span>
+            </div>
+
+            {/* Quick Filter Chips */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickFilter('');
+                  setSearchParams({});
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                  !quickFilter
+                    ? 'bg-brand-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                All
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickFilter('needs_review');
+                  setSearchParams({ filter: 'needs_review' });
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                  quickFilter === 'needs_review'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Needs Review ({stats.needsReview})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickFilter('waiting_on_admin');
+                  setSearchParams({});
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                  quickFilter === 'waiting_on_admin'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Waiting on Admin ({stats.waitingOnAdmin})
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60">
             {/* Status Filter */}
             <select
               value={statusFilter}
@@ -304,17 +389,19 @@ export default function AdminDashboard() {
               ))}
             </select>
 
-            {(statusFilter || categoryFilter || deptFilter) && (
+            {(statusFilter || categoryFilter || deptFilter || quickFilter) && (
               <button
                 type="button"
                 onClick={() => {
+                  setQuickFilter('');
                   setStatusFilter('');
                   setCategoryFilter('');
                   setDeptFilter('');
+                  setSearchParams({});
                 }}
-                className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1"
+                className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1 cursor-pointer"
               >
-                Clear
+                Clear all filters
               </button>
             )}
           </div>
@@ -326,9 +413,10 @@ export default function AdminDashboard() {
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4">Priority & Severity</th>
-                <th className="py-3 px-4">Issue / Summary</th>
+                <th className="py-3 px-4">Issue / Review Reason</th>
                 <th className="py-3 px-4">Category & Department</th>
-                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">Assigned Officer</th>
+                <th className="py-3 px-4">Status & SLA State</th>
                 <th className="py-3 px-4">Submitted (Age)</th>
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
@@ -336,17 +424,28 @@ export default function AdminDashboard() {
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredComplaints.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     No complaints match current filters.
                   </td>
                 </tr>
               ) : (
                 filteredComplaints.map((c) => {
                   const dept = departments.find((d) => d.id === c.department_id);
+                  const officerObj = officers.find((o) => o.id === c.assigned_officer_id);
                   const dateStr = new Date(c.created_at).toLocaleDateString('en-IN', {
                     day: 'numeric',
                     month: 'short',
                   });
+
+                  const isOverdue = c.sla_deadline && new Date(c.sla_deadline) < new Date() && c.status !== 'RESOLVED' && c.status !== 'OUT_OF_SCOPE';
+                  const slaStr = c.sla_deadline
+                    ? new Date(c.sla_deadline).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : null;
 
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
@@ -365,6 +464,16 @@ export default function AdminDashboard() {
                           {c.issue.replace(/_/g, ' ')}
                         </Link>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">{c.address_text}</p>
+
+                        {/* Review reason row display */}
+                        {(c.needs_review || c.review_reason) && (
+                          <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 max-w-fit">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span className="truncate max-w-[200px]" title={c.review_reason || 'Needs human review'}>
+                              {c.review_reason || 'Flagged for review'}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -373,12 +482,30 @@ export default function AdminDashboard() {
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <StatusBadge status={c.status} size="sm" />
-                        {c.needs_review && (
-                          <span className="ml-1 text-[10px] text-amber-700 font-semibold bg-amber-100 px-1 py-0.2 rounded">
-                            Review
+                        {officerObj ? (
+                          <span className="text-slate-800 font-semibold flex items-center gap-1">
+                            <User className="w-3 h-3 text-slate-400" />
+                            {officerObj.name}
                           </span>
+                        ) : c.assigned_officer_id ? (
+                          <span className="text-slate-600 font-mono text-[11px]">Officer #{c.assigned_officer_id}</span>
+                        ) : (
+                          <span className="text-slate-400 italic text-[11px]">Unassigned</span>
                         )}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="space-y-1">
+                          <StatusBadge status={c.status} size="sm" />
+                          {slaStr && (
+                            <div className="text-[10px] flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span className={isOverdue ? 'text-rose-600 font-bold' : 'text-slate-500'}>
+                                {isOverdue ? `Overdue (${slaStr})` : `Due: ${slaStr}`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap text-slate-500">

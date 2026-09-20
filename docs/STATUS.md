@@ -17,7 +17,7 @@ AI-powered closed-loop civic issue resolution platform.
 - **Resolution Upload & Verification Hook**: `backend/app/routers/actions.py` & `verification.py` (`POST /api/complaints/{id}/resolution` with 1-4 images, random filenames, `StubVerifier` protocol, automated transition to `ADMIN_VERIFICATION`).
 - **Intake Pipeline & API**: `backend/app/pipeline.py` & `routers/complaints.py` (`POST /api/complaints`, `GET /api/complaints` with officer/review filters, extended detail endpoint, `GET /api/evidence/{id}/file`, `GET /api/health` with LLM circuit breaker status).
 - **Testing & Scripts**: `backend/tests/` (107 offline unit/integration tests with temp DB isolation and quota mocks), `backend/scripts/reset_demo_db.py`, `backend/scripts/demo_flow.py` (end-to-end HTTP lifecycle flow with 120s timeout, custom flags, dynamic department officer assignment, and step elapsed timing).
-- **Frontend Application**: React 18, Vite, Tailwind CSS, React Router v6 (Dashboards, Detail page with audit/status timeline, Leaflet Map, Report form with PCM voice recorder and photo/video upload).
+- **Frontend Application**: React 18, Vite, Tailwind CSS, React Router v6 (Landing role & passcode picker with `whoami` validation, Role-guarded routing `/officer`, `/admin`, `/citizen`; Officer work queue with SLA overdue badges; ActionPanel with accessible modals; ResolutionForm with before photo reference; BeforeAfter visual comparison; VerificationCard with human decision disclaimer and 3-step tracker; Admin queues with "Needs review" and "Waiting on admin" chips; Leaflet Map, Report form with PCM voice recorder).
 
 ## 2. How to Run
 

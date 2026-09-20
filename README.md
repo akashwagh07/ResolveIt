@@ -15,13 +15,14 @@ copy .env.example .env
 
 > **Note on Model Changes**: No migrations are used. After making model changes, delete `resolveit.db` and restart the server so tables are re-created and seeded.
 
-### LLM Configuration
-Set your Gemini configuration in `.env`:
+### LLM & Environment Configuration
+Set your configuration in `.env`:
 - `GEMINI_MODEL=gemini-3.6-flash` (Primary multimodal classification model)
 - `GEMINI_FALLBACK_MODELS=gemini-3.5-flash,gemini-3.7-flash` (Fallback chain tried sequentially on failure)
 - `GEMINI_API_KEY`: Your Google Gemini API key
 - `LLM_TOTAL_TIMEOUT_SECONDS=25`: Total timeout budget per classification across all models & retries
 - `LLM_QUOTA_COOLDOWN_SECONDS=120`: Circuit breaker cooldown duration when all models return quota exhaustion (HTTP 429)
+- `OFFICER_PASSCODE=officer123`: Passcode required for Officer and Admin demo login
 
 
 ## Run
@@ -80,6 +81,11 @@ npm install
 npm run dev
 ```
 The frontend will start on [http://localhost:5173](http://localhost:5173) with automatic proxying to the backend API.
+
+#### Frontend Configuration (`frontend/.env`)
+- `VITE_API_URL`: Backend API base URL (empty by default; Vite proxies `/api` to `http://localhost:8000`).
+- `VITE_DEMO_PASSCODE_HINT`: Optional hint displayed on the demo login passcode field (e.g. `officer123`). If blank or unset, no hint is shown.
+- When an incorrect passcode is entered, the login form displays: *"Wrong passcode. Ask the team for the demo passcode."*
 
 > **Browser Permissions Note**: In-browser Geolocation (`navigator.geolocation`) and Microphone access (`navigator.mediaDevices.getUserMedia`) are restricted by modern browser security policies and require a secure origin (`localhost` or `https://`).
 

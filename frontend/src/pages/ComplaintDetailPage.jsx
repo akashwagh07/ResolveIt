@@ -17,19 +17,27 @@ import {
   Maximize2,
   X,
   Volume2,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 import { getComplaint, getDepartments } from '../lib/api';
 import StatusBadge from '../components/StatusBadge';
 import SeverityBadge from '../components/SeverityBadge';
 import PriorityBadge from '../components/PriorityBadge';
 import StatusTimeline from '../components/StatusTimeline';
 import AuditTimeline from '../components/AuditTimeline';
+import ActionPanel from '../components/ActionPanel';
+import ResolutionForm from '../components/ResolutionForm';
+import BeforeAfter from '../components/BeforeAfter';
+import VerificationCard from '../components/VerificationCard';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 
 export default function ComplaintDetailPage() {
   const { id } = useParams();
   const location = useLocation();
+  const { session, isCitizen, isOfficer, isAdmin } = useAuth();
   const [complaint, setComplaint] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,8 +45,8 @@ export default function ComplaintDetailPage() {
   const [expandedImage, setExpandedImage] = useState(null);
   const [mediaErrors, setMediaErrors] = useState({});
 
-  const isAdminView = location.pathname.startsWith('/admin');
-  const backLink = isAdminView ? '/admin' : '/citizen';
+  const backLink = isOfficer ? '/officer' : (isAdmin || location.pathname.startsWith('/admin') ? '/admin' : '/citizen');
+  const backLabel = isOfficer ? 'My Work' : (isAdmin || location.pathname.startsWith('/admin') ? 'Work Queue' : 'My Complaints');
 
   const fetchData = async () => {
     setLoading(true);
@@ -92,6 +100,28 @@ export default function ComplaintDetailPage() {
       })
     : null;
 
+  const latestResolution =
+    complaint.resolutions && complaint.resolutions.length > 0
+      ? complaint.resolutions[complaint.resolutions.length - 1]
+      : null;
+
+  const beforeEvidence =
+    complaint.before_evidence && complaint.before_evidence.length > 0
+      ? complaint.before_evidence
+      : (complaint.evidence || [])
+          .filter((ev) => ev.role === 'COMPLAINT' && ev.type === 'IMAGE')
+          .map((ev) => ({ id: ev.id, url: ev.url || `/api/evidence/${ev.id}/file` }));
+
+  const afterEvidence = latestResolution?.after_evidence || [];
+
+  const isAssignedOfficer =
+    isOfficer && Number(complaint.assigned_officer_id) === Number(session?.userId);
+
+  const isCitizenConfirmation = complaint.status === 'CITIZEN_CONFIRMATION';
+  const isAdminVerification = complaint.status === 'ADMIN_VERIFICATION';
+  const isOfficerInProgress = complaint.status === 'IN_PROGRESS' && isAssignedOfficer;
+  const isResolved = complaint.status === 'RESOLVED';
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Navigation & Header */}
@@ -101,7 +131,7 @@ export default function ComplaintDetailPage() {
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors mb-4"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to {isAdminView ? 'Work Queue' : 'My Complaints'}
+          Back to {backLabel}
         </Link>
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
@@ -150,11 +180,115 @@ export default function ComplaintDetailPage() {
         </div>
       </div>
 
+      {/* Needs Review Alert Banner */}
+      {complaint.needs_review && complaint.review_reason && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Under Administrative Review:</p>
+            <p className="mt-0.5">{complaint.review_reason}</p>
+          </div>
+        </div>
+      )}
+
       {/* Lifecycle progress bar */}
       <StatusTimeline
         currentStatus={complaint.status}
         previousStatus={complaint.previous_status}
       />
+
+      {/* 1. ADMIN VERIFICATION VIEW (Promoted to Top for Admins) */}
+      {isAdminVerification && isAdmin && latestResolution && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-purple-900">
+              <span className="font-bold">Administrative Verification Required: </span>
+              A field officer has submitted photographic resolution proof. Review the automated analysis and before/after pictures below, then approve or reject the resolution.
+            </div>
+          </div>
+
+          <VerificationCard resolution={latestResolution} />
+          <BeforeAfter beforeEvidence={beforeEvidence} afterEvidence={afterEvidence} />
+          <ActionPanel complaint={complaint} onActionSuccess={fetchData} role={session?.role} />
+        </div>
+      )}
+
+      {/* 2. CITIZEN CONFIRMATION VIEW (Highlighted for Citizens) */}
+      {isCitizenConfirmation && (
+        <div className="bg-white rounded-2xl border-2 border-amber-300 p-6 shadow-sm space-y-5">
+          <div className="flex items-start gap-3 border-b border-amber-100 pb-3">
+            <CheckCircle2 className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Action Required: Confirm or Dispute Resolution
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                The municipal team has reported that this issue is fixed. Please check the before and after evidence below.
+              </p>
+            </div>
+          </div>
+
+          {latestResolution && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                Officer Repair Note:
+              </span>
+              <p className="text-slate-800 italic">"{latestResolution.description}"</p>
+            </div>
+          )}
+
+          <BeforeAfter beforeEvidence={beforeEvidence} afterEvidence={afterEvidence} />
+
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+            <h4 className="font-bold text-slate-900">What do the choices mean?</h4>
+            <ul className="space-y-1 text-slate-600 list-disc list-inside">
+              <li><span className="font-semibold text-emerald-700">Confirm Resolution:</span> Certifies that the repair has been satisfactorily completed in your neighborhood. This closes the issue.</li>
+              <li><span className="font-semibold text-rose-700">Dispute Resolution:</span> Reopens the complaint if the problem was not fixed, was done poorly, or has returned. You will be asked for a reason.</li>
+            </ul>
+          </div>
+
+          <ActionPanel complaint={complaint} onActionSuccess={fetchData} role={session?.role} />
+        </div>
+      )}
+
+      {/* 3. OFFICER IN PROGRESS RESOLUTION FORM */}
+      {isOfficerInProgress && (
+        <ResolutionForm complaint={complaint} onResolutionSuccess={fetchData} />
+      )}
+
+      {/* 4. CLOSURE SUMMARY CARD (When RESOLVED) */}
+      {isResolved && (
+        <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3.5 text-xs text-emerald-950 shadow-xs">
+          <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-1 flex-1">
+            <h3 className="text-sm font-bold text-emerald-900">
+              Complaint Successfully Resolved & Closed
+            </h3>
+            <p className="text-emerald-800">
+              The closed-loop lifecycle for this civic issue is complete. The fix was uploaded by the assigned officer, verified by municipal authorities, and confirmed by the citizen.
+            </p>
+            {complaint.resolved_at && (
+              <p className="text-[11px] font-mono text-emerald-700 pt-1">
+                Resolved At: {new Date(complaint.resolved_at).toLocaleString('en-IN')}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. STANDARD ACTION PANEL (Rendered for states not handled above) */}
+      {!isAdminVerification && !isCitizenConfirmation && (
+        <ActionPanel complaint={complaint} onActionSuccess={fetchData} role={session?.role} />
+      )}
+
+      {/* 6. BEFORE/AFTER & VERIFICATION CARD (If resolution exists and not already rendered at top) */}
+      {!isAdminVerification && !isCitizenConfirmation && latestResolution && (
+        <div className="space-y-6">
+          <BeforeAfter beforeEvidence={beforeEvidence} afterEvidence={afterEvidence} />
+          <VerificationCard resolution={latestResolution} />
+        </div>
+      )}
 
       {/* Main Details Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
