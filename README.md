@@ -23,11 +23,21 @@ copy .env.example .env
 pytest
 ```
 
-### Start Development Server
+### Start Backend Development Server
 Run from the repository root:
 ```powershell
 uvicorn backend.app.main:app --reload --port 8000
 ```
+
+### Start Frontend Development Server
+Ensure the backend is running on port 8000, then run in a separate terminal:
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+The frontend will start on [http://localhost:5173](http://localhost:5173) with automatic proxying to the backend API.
+
 
 ### API Routes
 
