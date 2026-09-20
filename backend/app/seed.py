@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .clock import now as clock_now
 from .events import log_event
+from .engines.sla import initial_deadline
 from .models import (
     Complaint,
     Department,
@@ -17,7 +18,7 @@ from .models import (
 
 
 def seed_departments(db: Session) -> dict[str, Department]:
-    """Seed the 10 canonical municipal departments from JSON."""
+    """Seed the 10 canonical municipal departments from JSON (UPSERT by code)."""
     json_path = Path(__file__).parent / "seed" / "departments.json"
     with open(json_path, "r", encoding="utf-8") as f:
         departments_data = json.load(f)
@@ -27,6 +28,10 @@ def seed_departments(db: Session) -> dict[str, Department]:
         code = item["code"]
         existing = db.query(Department).filter_by(code=code).first()
         if existing:
+            existing.name = item["name"]
+            existing.categories = item.get("categories", [code])
+            existing.escalation_chain = item.get("escalation_chain", [])
+            existing.sla_hours = item.get("sla_hours")
             dept_map[code] = existing
             continue
 
@@ -444,6 +449,14 @@ def seed_complaints(db: Session, dept_map: dict[str, Department], users_map: dic
         ]
         for actor, action, detail in transitions_c6:
             log_event(db, c6.id, actor, action, detail=detail)
+
+    # Backfill sla_deadline for seeded complaints in active (non-terminal) states
+    active_complaints = db.query(Complaint).filter(Complaint.status != "RESOLVED").all()
+    for c in active_complaints:
+        if c.sla_deadline is None and c.department_id is not None:
+            dept = db.query(Department).filter_by(id=c.department_id).first()
+            if dept and c.created_at and c.priority:
+                c.sla_deadline = initial_deadline(c.created_at, c.priority, dept)
 
     db.commit()
 
