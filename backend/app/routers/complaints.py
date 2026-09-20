@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Complaint, ComplaintEvent, Department, Evidence
+from ..models import Complaint, ComplaintEvent, Department, Evidence, Resolution, User
 from ..pipeline import PipelineError, SubmissionError, SubmissionPayload, process_submission
 from ..schemas import ComplaintDetail, ComplaintEventSchema, ComplaintSummary
 
@@ -143,6 +143,8 @@ def list_complaints(
     status: Optional[str] = Query(None, description="Filter by status"),
     category: Optional[str] = Query(None, description="Filter by category"),
     department_id: Optional[str] = Query(None, description="Filter by department ID"),
+    assigned_officer_id: Optional[str] = Query(None, description="Filter by assigned officer ID"),
+    needs_review: Optional[str] = Query(None, description="Filter by needs_review (bool)"),
     citizen_contact: Optional[str] = Query(None, description="Filter by citizen contact"),
     limit: int = Query(50, ge=1, le=200, description="Max complaints to return"),
     db: Session = Depends(get_db),
@@ -158,6 +160,18 @@ def list_complaints(
             query = query.filter(Complaint.department_id == dept_int)
         except ValueError:
             pass
+    if assigned_officer_id and str(assigned_officer_id).strip():
+        try:
+            off_int = int(str(assigned_officer_id).strip())
+            query = query.filter(Complaint.assigned_officer_id == off_int)
+        except ValueError:
+            pass
+    if needs_review is not None and str(needs_review).strip():
+        nr_lower = str(needs_review).strip().lower()
+        if nr_lower in ("true", "1"):
+            query = query.filter(Complaint.needs_review.is_(True))
+        elif nr_lower in ("false", "0"):
+            query = query.filter(Complaint.needs_review.is_(False))
     if citizen_contact and citizen_contact.strip():
         query = query.filter(Complaint.citizen_contact == citizen_contact.strip())
 
@@ -172,7 +186,102 @@ def get_complaint(id: str, db: Session = Depends(get_db)):
             status_code=404,
             detail=f"Complaint with id '{id}' not found",
         )
-    return complaint
+
+    assigned_officer_info = None
+    if complaint.assigned_officer:
+        assigned_officer_info = {
+            "id": complaint.assigned_officer.id,
+            "name": complaint.assigned_officer.name,
+        }
+
+    dept_info = None
+    if complaint.department:
+        dept_info = {
+            "id": complaint.department.id,
+            "code": complaint.department.code,
+            "name": complaint.department.name,
+        }
+
+    before_ev = [
+        {"id": ev.id, "url": f"/api/evidence/{ev.id}/file"}
+        for ev in complaint.evidence
+        if ev.role == "COMPLAINT" and ev.type == "IMAGE"
+    ]
+
+    res_list = (
+        db.query(Resolution)
+        .filter_by(complaint_id=complaint.id)
+        .order_by(Resolution.created_at.asc())
+        .all()
+    )
+    resolutions_data = []
+    for r in res_list:
+        off_name = None
+        if r.officer_id:
+            off_u = db.query(User).filter_by(id=r.officer_id).first()
+            if off_u:
+                off_name = off_u.name
+        after_ev = [
+            {"id": ev.id, "url": f"/api/evidence/{ev.id}/file"}
+            for ev in complaint.evidence
+            if ev.role == "RESOLUTION_AFTER"
+        ]
+        resolutions_data.append({
+            "id": r.id,
+            "created_at": r.created_at,
+            "description": r.description,
+            "officer_name": off_name,
+            "ai_verdict": r.ai_verdict,
+            "ai_confidence": r.ai_confidence,
+            "admin_decision": r.admin_decision,
+            "citizen_decision": r.citizen_decision,
+            "after_evidence": after_ev,
+        })
+
+    return {
+        "id": complaint.id,
+        "created_at": complaint.created_at,
+        "updated_at": complaint.updated_at,
+        "citizen_name": complaint.citizen_name,
+        "citizen_contact": complaint.citizen_contact,
+        "raw_text": complaint.raw_text,
+        "language": complaint.language,
+        "latitude": complaint.latitude,
+        "longitude": complaint.longitude,
+        "address_text": complaint.address_text,
+        "category": complaint.category,
+        "issue": complaint.issue,
+        "category_confidence": complaint.category_confidence,
+        "civic_relevance": complaint.civic_relevance,
+        "credibility": complaint.credibility,
+        "severity_score": complaint.severity_score,
+        "severity_level": complaint.severity_level,
+        "priority": complaint.priority,
+        "department_id": complaint.department_id,
+        "assigned_officer_id": complaint.assigned_officer_id,
+        "needs_review": complaint.needs_review,
+        "review_reason": complaint.review_reason,
+        "status": complaint.status,
+        "previous_status": complaint.previous_status,
+        "escalation_level": complaint.escalation_level,
+        "sla_deadline": complaint.sla_deadline,
+        "resolved_at": complaint.resolved_at,
+        "severity_factors": complaint.severity_factors or [],
+        "priority_factors": complaint.priority_factors or [],
+        "structured_summary": complaint.structured_summary,
+        "ai_reasoning": complaint.ai_reasoning or {},
+        "missing_info": complaint.missing_info or [],
+        "cluster_id": complaint.cluster_id,
+        "duplicate_of": complaint.duplicate_of,
+        "duplicate_count": complaint.duplicate_count,
+        "last_followup_at": complaint.last_followup_at,
+        "events": complaint.events,
+        "evidence": complaint.evidence,
+        "assigned_officer": assigned_officer_info,
+        "department": dept_info,
+        "resolutions": resolutions_data,
+        "before_evidence": before_ev,
+    }
 
 
 @router.get("/api/complaints/{id}/events", response_model=List[ComplaintEventSchema])

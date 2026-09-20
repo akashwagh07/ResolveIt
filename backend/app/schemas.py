@@ -81,6 +81,38 @@ class ComplaintSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OfficerSummary(BaseModel):
+    id: int
+    name: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DepartmentSummary(BaseModel):
+    id: int
+    code: str
+    name: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvidenceItem(BaseModel):
+    id: int
+    url: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResolutionDetail(BaseModel):
+    id: int
+    created_at: datetime
+    description: str
+    officer_name: Optional[str] = None
+    ai_verdict: Optional[dict[str, Any]] = None
+    ai_confidence: float = 0.0
+    admin_decision: Optional[str] = None
+    citizen_decision: Optional[str] = None
+    after_evidence: list[EvidenceItem] = []
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ComplaintDetail(ComplaintSummary):
     severity_factors: Union[list[dict[str, Any]], dict[str, Any]] = Field(default_factory=list)
     priority_factors: Union[list[dict[str, Any]], dict[str, Any]] = Field(default_factory=list)
@@ -93,5 +125,9 @@ class ComplaintDetail(ComplaintSummary):
     last_followup_at: Optional[datetime] = None
     events: list[ComplaintEventSchema] = []
     evidence: list[EvidenceSchema] = []
+    assigned_officer: Optional[OfficerSummary] = None
+    department: Optional[DepartmentSummary] = None
+    resolutions: list[ResolutionDetail] = []
+    before_evidence: list[EvidenceItem] = []
 
     model_config = ConfigDict(from_attributes=True)

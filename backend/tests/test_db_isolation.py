@@ -80,9 +80,17 @@ def test_relative_sqlite_url_resolves_consistently_regardless_of_cwd(tmp_path, m
     assert s3.DATABASE_URL == expected_url
 
 
+from backend.tests.test_intake import TINY_PNG, _agent1_civic_json
+from backend.tests.test_llm import FakeBackend
+from backend.app.llm import reset_backend, set_backend
+
+
 def test_unexpected_pipeline_error_returns_json_500_and_deletes_uploads(tmp_path, monkeypatch):
     """Unexpected pipeline errors return 500 {"detail": "Internal error while processing the complaint"} and delete uploads."""
     client = TestClient(app)
+
+    fake = FakeBackend([_agent1_civic_json()])
+    set_backend(fake)
 
     # Monkeypatch decide in agent2 to simulate an unexpected crash
     def crash_decide(*args, **kwargs):
@@ -106,10 +114,13 @@ def test_unexpected_pipeline_error_returns_json_500_and_deletes_uploads(tmp_path
         "image": ("test_error_file.png", io.BytesIO(TINY_PNG), "image/png"),
     }
 
-    resp = client.post("/api/complaints", data=data, files=files)
-    assert resp.status_code == 500
-    assert resp.json() == {"detail": "Internal error while processing the complaint"}
+    try:
+        resp = client.post("/api/complaints", data=data, files=files)
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal error while processing the complaint"}
 
-    # Verify that no files remain in the upload directory
-    all_saved_files = list(upload_dir.rglob("*.png"))
-    assert len(all_saved_files) == 0, f"Saved files were not cleaned up: {all_saved_files}"
+        # Verify that no files remain in the upload directory
+        all_saved_files = list(upload_dir.rglob("*.png"))
+        assert len(all_saved_files) == 0, f"Saved files were not cleaned up: {all_saved_files}"
+    finally:
+        reset_backend()

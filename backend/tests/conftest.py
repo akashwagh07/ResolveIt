@@ -135,3 +135,18 @@ def client(db):
         yield test_client
     app.dependency_overrides.clear()
 
+
+@pytest.fixture(scope="function", autouse=True)
+def clean_llm_state():
+    """Ensure clean LLM backend, circuit breaker cooldown, clock, and sleep function for every test."""
+    from backend.app.llm import reset_backend, reset_cooldown, reset_monotonic_clock, reset_sleep_fn
+    reset_backend()
+    reset_cooldown()
+    reset_monotonic_clock()
+    reset_sleep_fn()
+    yield
+    reset_backend()
+    reset_cooldown()
+    reset_monotonic_clock()
+    reset_sleep_fn()
+
