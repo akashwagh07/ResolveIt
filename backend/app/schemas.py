@@ -61,6 +61,9 @@ class ComplaintSummary(BaseModel):
     severity_level: str
     priority: str
     department_id: int
+    assigned_officer_id: Optional[int] = None
+    needs_review: bool = False
+    review_reason: Optional[str] = None
     status: str
     previous_status: Optional[str] = None
     escalation_level: int

@@ -13,6 +13,9 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
+> **Note on Model Changes**: No migrations are used. After making model changes, delete `resolveit.db` and restart the server so tables are re-created and seeded.
+
+
 ## Run
 
 ### Run Tests

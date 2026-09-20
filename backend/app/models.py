@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -80,6 +81,9 @@ class Complaint(Base):
     severity_factors: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     priority_factors: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"), nullable=False)
+    assigned_officer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    review_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="SUBMITTED", index=True, nullable=False)
     previous_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     escalation_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -94,6 +98,7 @@ class Complaint(Base):
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     department: Mapped[Department] = relationship("Department", back_populates="complaints")
+    assigned_officer: Mapped[Optional[User]] = relationship("User", foreign_keys=[assigned_officer_id])
     evidence: Mapped[List[Evidence]] = relationship("Evidence", back_populates="complaint", cascade="all, delete-orphan")
     events: Mapped[List[ComplaintEvent]] = relationship("ComplaintEvent", back_populates="complaint", cascade="all, delete-orphan", order_by="ComplaintEvent.timestamp")
     resolutions: Mapped[List[Resolution]] = relationship("Resolution", back_populates="complaint", cascade="all, delete-orphan")
@@ -156,3 +161,15 @@ class ComplaintEvent(Base):
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     complaint: Mapped[Complaint] = relationship("Complaint", back_populates="events")
+ 
+ 
+class CommandRejection(Base):
+    __tablename__ = "command_rejections"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    complaint_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    command_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=clock_now, nullable=False)
