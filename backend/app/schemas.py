@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict
+from typing import Any, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DepartmentSchema(BaseModel):
@@ -28,17 +28,25 @@ class ComplaintEventSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+
 class EvidenceSchema(BaseModel):
     id: int
     complaint_id: str
     type: str
     role: str
     file_path: str
+    url: Optional[str] = None
     phash: Optional[str] = None
     uploaded_by: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def populate_url(self) -> "EvidenceSchema":
+        if self.id and not self.url:
+            self.url = f"/api/evidence/{self.id}/file"
+        return self
 
 
 class ComplaintSummary(BaseModel):
@@ -74,8 +82,8 @@ class ComplaintSummary(BaseModel):
 
 
 class ComplaintDetail(ComplaintSummary):
-    severity_factors: dict[str, Any] = {}
-    priority_factors: dict[str, Any] = {}
+    severity_factors: Union[list[dict[str, Any]], dict[str, Any]] = Field(default_factory=list)
+    priority_factors: Union[list[dict[str, Any]], dict[str, Any]] = Field(default_factory=list)
     structured_summary: Optional[str] = None
     ai_reasoning: Optional[dict[str, Any]] = None
     missing_info: Optional[list[str]] = None
