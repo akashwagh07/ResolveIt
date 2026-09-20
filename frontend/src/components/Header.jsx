@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, User, LogOut, Map, BarChart3, PlusCircle, Sliders } from 'lucide-react';
+import { Shield, User, LogOut, Map, BarChart3, PlusCircle, Sliders, Briefcase, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
 export default function Header() {
-  const { session, clearSession } = useAuth();
+  const { session, clearSession, isCitizen, isOfficer, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -12,9 +12,6 @@ export default function Header() {
     clearSession();
     navigate('/');
   };
-
-  const isCitizen = session?.role === 'CITIZEN';
-  const isAdminOrOfficer = session?.role === 'ADMIN' || session?.role === 'OFFICER';
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs">
@@ -42,7 +39,7 @@ export default function Header() {
                     to="/citizen"
                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                       location.pathname === '/citizen'
-                        ? 'bg-slate-100 text-slate-900'
+                        ? 'bg-slate-100 text-slate-900 font-semibold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
                   >
@@ -52,7 +49,7 @@ export default function Header() {
                     to="/citizen/report"
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                       location.pathname === '/citizen/report'
-                        ? 'bg-brand-50 text-brand-700'
+                        ? 'bg-brand-50 text-brand-700 font-semibold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
                   >
@@ -62,18 +59,45 @@ export default function Header() {
                 </>
               )}
 
-              {isAdminOrOfficer && (
+              {isOfficer && (
+                <>
+                  <Link
+                    to="/officer"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      location.pathname === '/officer'
+                        ? 'bg-brand-50 text-brand-700 font-semibold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    My Work
+                  </Link>
+                </>
+              )}
+
+              {isAdmin && (
                 <>
                   <Link
                     to="/admin"
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                      location.pathname === '/admin'
+                      location.pathname === '/admin' && !location.search.includes('filter=needs_review')
                         ? 'bg-slate-100 text-slate-900 font-semibold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
                   >
                     <BarChart3 className="w-3.5 h-3.5" />
                     Work Queue
+                  </Link>
+                  <Link
+                    to="/admin?filter=needs_review"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      location.search.includes('filter=needs_review')
+                        ? 'bg-amber-50 text-amber-900 font-semibold border border-amber-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    Needs Review
                   </Link>
                   <Link
                     to="/admin/map"
@@ -117,18 +141,31 @@ export default function Header() {
                 </Link>
               )}
 
+              {isOfficer && (
+                <Link
+                  to="/officer"
+                  className="flex md:hidden items-center gap-1 px-2.5 py-1 rounded-md bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold"
+                >
+                  <Briefcase className="w-3 h-3" />
+                  My Work
+                </Link>
+              )}
+
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700">
                 <User className="w-3.5 h-3.5 text-slate-500" />
                 <span className="font-semibold">{session.role}</span>
-                {session.citizenName && (
-                  <span className="hidden sm:inline text-slate-400">({session.citizenName})</span>
+                {session.name && (
+                  <span className="hidden sm:inline text-slate-600">({session.name})</span>
+                )}
+                {session.departmentName && (
+                  <span className="hidden lg:inline text-slate-400 font-mono text-[10px]">[{session.departmentName}]</span>
                 )}
               </div>
 
               <button
                 type="button"
                 onClick={handleSwitchRole}
-                className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-rose-600 px-2.5 py-1 rounded-md hover:bg-rose-50 transition-colors"
+                className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-rose-600 px-2.5 py-1 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
                 title="Switch demo role"
               >
                 <LogOut className="w-3.5 h-3.5" />
